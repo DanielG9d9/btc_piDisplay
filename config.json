@@ -1,0 +1,25 @@
+{
+    "rpc_settings": {
+        "raspiblitz": {
+            "rpc_user": "raspibolt",
+            "rpc_host": "192.168.86.68",
+            "rpc_password": "Waffle9d9RPC123PaSSw0rd",
+            "rpc_port": "8332"
+        },
+        "parmanode": {
+            "rpc_user": "satoshi",
+            "rpc_host": "192.168.86.49",
+            "rpc_password": "Waffle9d9RPC123PaSSw0rd",
+            "rpc_port": "8332"
+        }
+    },
+    "connect_to": "raspiblitz",
+    "update_intervals": {
+        "__comment": "These are in seconds",
+        "price": 3600,
+        "blockchain": 600
+    },
+    "cache_file": "bitcoin_price_cache.json",
+    "log_file": "bitcoin_display.log",
+    "testing": false
+}
