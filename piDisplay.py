@@ -1,5 +1,3 @@
-# Trying to save blockchain info and not delete
-#TODO: Add config file for update of price interval and blockchain interval
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
 from datetime import datetime, timedelta
 import requests
@@ -200,8 +198,8 @@ def update_price_chart():
 
                 # Set the y-axis major formatter
                 ax.yaxis.set_major_formatter(currency_formatter)
-                # fig.tight_layout(pad=1.5) # Increased padding for X axis
-                fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+                fig.tight_layout(pad=1.5) # Increased padding for X axis
+                # fig.tight_layout(rect=[0, 0.03, 1, 0.95])
                 canvas.draw()
             last_price_update = current_time
         except Exception as e:
@@ -313,7 +311,7 @@ def update_blockchain_info():
     if current_time - last_blockchain_update >= config['update_intervals']['blockchain']: # 600 seconds = 10 minutes
         try: # Let's update info
             new_chain_info, new_network_info, fees = get_node_info(rpc_connection)
-            print(f"Successful connection if not 'none': {new_chain_info}")
+            print(f"Successful connection if not 'none' {get_timestamp()}: {new_chain_info}")
             # If successful go to bottom to call update_node_table function
             update_node_table(new_chain_info, new_network_info, fees) # Call the update function if we're able to connect
             # Store previous values
@@ -329,11 +327,8 @@ def update_blockchain_info():
                 print(f"{get_timestamp()} - Error updating blockchain info first try: {e}")
                 logging.error(f"{get_timestamp()} - Error updating blockchain info: {e}")
                 try: # Attempt to reconnect
-                    # print("Closing connection")
-                    # rpc_connection._BaseProxy__client.close()
                     print("Retrying update: ******************")
-                    # rpc_connection._BaseProxy__client.reconnect() # Going to try and call the original def
-                    update_blockchain_info()
+                    update_blockchain_info() # Retry the blockchain pull
                 except Exception as e:
                     print(f"{get_timestamp()} - Failed to reconnect. Will try again in the next update. {e}")
                     logging.error(f"{get_timestamp()} - Failed to reconnect. Will try again in the next update. {e}")
