@@ -1,4 +1,4 @@
-#!/home/satoshi/Desktop/bitcoin_env/bin/python3
+#!/home/satoshi/Documents/btc_piDisplay/bitcoin_env/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys

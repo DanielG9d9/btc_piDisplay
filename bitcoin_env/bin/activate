@@ -34,11 +34,11 @@ deactivate () {
         unset -f deactivate
     fi
 }
-
+export DISPLAY=:0.0
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="/home/satoshi/Desktop/bitcoin_env"
+VIRTUAL_ENV="/home/satoshi/Documents/btc_piDisplay/bitcoin_env"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"
