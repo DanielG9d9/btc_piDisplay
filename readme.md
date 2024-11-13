@@ -9,7 +9,9 @@ My build consists of a raspberry pi 4 (8gb), 1 TB HHD, and a 5" display from [Am
 
 - [Features](#features)
 - [Pre-requisites](#pre-requisites)
-- [Installation](#installation)
+- [Installation](#install)
+- [Manual Start](#manually-starting-the-program)
+- [Debug / Testing](#debug--testing)
 <!-- - [Usage](#usage)
 - [Contributing](#contributing)
 - [License](#license)
@@ -33,7 +35,7 @@ My build consists of a raspberry pi 4 (8gb), 1 TB HHD, and a 5" display from [Am
 2. You should know the RPC login information (user/pwd).
 3. You should be able to connect to the target display via ssh or terminal.
 
-## Installation
+## Install
 
 Follow these steps to install and set up the project:
 
@@ -51,3 +53,19 @@ Follow these steps to install and set up the project:
 3. Run the install.sh file
     ```bash
     ./install.sh # Run the script file to install dependencies.
+
+## Manually Starting The Program
+If you need to manually start the display after a reboot or any reason you can easily do so by double clicking the Run Display.sh icon and "Execute."  
+  
+You can also start the display remotely from your terminal via ssh!
+1. Navigate to your repository folder
+    ```bash
+    cd /home/$USER/Documents/btc_piDisplay # Navigate to your saved directory.
+2. Open the virtual environment.
+    ```bash
+    source bitcoin_env/bin/activate # Launch the bitcoin_env virtual environment.
+3. Run the script from the virtual environment.  
+    ```bash
+    nohup python3 piDisplay.py # Use nohup to ensure the script does not stop when you close the terminal.
+## Debug & Testing
+If you encounter errors an output log should be created at the location specified in the config file. By default it is set as `"log_file": "/home/satoshi/Desktop/bitcoin_display.log"` and should be updated to your custom path when setting other config parameters. More specifically, satoshi should be changed to your profile name. If you don't know what your profile name is run the command `whoami` in the terminal of the raspberry pi.
