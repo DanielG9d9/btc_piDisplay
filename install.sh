@@ -33,6 +33,8 @@ sudo apt-get install -y git python3-venv
 #########################
 echo "Creating virtual environment..."
 python3 -m venv bitcoin_env
+echo "Updating DISPLAY variable"
+sed -i '38i export DISPLAY=:0.0' filename
 echo "Activating environment"
 source bitcoin_env/bin/activate
 
