@@ -14,7 +14,6 @@ import logging
 import json
 import matplotlib.ticker as mticker
 import numpy as np
-# from matplotlib.patches import Rectangle
 from matplotlib.offsetbox import AnchoredOffsetbox, TextArea, VPacker, HPacker
 import json
 
@@ -30,7 +29,7 @@ rpc_user = rpc_settings['rpc_user']
 rpc_host = rpc_settings['rpc_host']
 rpc_password = rpc_settings['rpc_password']
 rpc_port = rpc_settings['rpc_port']
-
+time_series = config['time_series']
 CACHE_FILE = config['cache_file']
 testing = config['testing']
 
@@ -40,15 +39,11 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
-    # flush=True
+    # flush=True # Not working
 )
 
 # RPC connection
 rpc_connection = AuthServiceProxy(f"http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}", timeout=30)
-
-
-# testing = True # Turn to true when testing so you don't ping for price a lot
-# CACHE_FILE = 'bitcoin_price_cache.json'
 
 # Global Variables
 last_price_update = 0 # Variable for tracking when to update price
@@ -65,16 +60,16 @@ ax = None
 saved_timestamp = ""
 
 # Replace with your Parmanode's RPC credentials
-connect_to = 'raspiblitz' # or "parmanode"
-if connect_to == 'raspiblitz':
-    rpc_user = 'raspibolt'
-    rpc_host = '192.168.86.68'  # localhost
-else:
-    rpc_user = 'satoshi'
-    rpc_host = '192.168.86.49'  # localhost
+# connect_to = 'raspiblitz' # or "parmanode"
+# if connect_to == 'raspiblitz':
+#     rpc_user = 'raspibolt'
+#     rpc_host = '192.168.86.68'  # localhost
+# else:
+#     rpc_user = 'satoshi'
+#     rpc_host = '192.168.86.49'  # localhost
 
-rpc_password = 'Waffle9d9RPC123PaSSw0rd'
-rpc_port = '8332'  # default Bitcoin Core RPC port
+# rpc_password = 'Waffle9d9RPC123PaSSw0rd'
+# rpc_port = '8332'  # default Bitcoin Core RPC port
 
 
 rpc_connection = AuthServiceProxy(f"http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}", timeout=30)
@@ -105,16 +100,14 @@ def get_fee_estimates(rpc_connection):
         high_priority = rpc_connection.estimatesmartfee(1)
         medium_priority = rpc_connection.estimatesmartfee(6)
         low_priority = rpc_connection.estimatesmartfee(144)
-        # print(f"L{low_priority} M{medium_priority} H{high_priority}")
+
         # Extract the fee rates and convert to sats/vB
         high_fee = int(high_priority['feerate'] * 100000000)  # Convert BTC/kB to sat/vB
         medium_fee = int(medium_priority['feerate'] * 100000000)
         low_fee = int(low_priority['feerate'] * 100000000)
-        # print(f"L{low_fee} M{medium_fee} H{high_fee}")
 
         return [low_fee, medium_fee, high_fee]
     except Exception as e:
-        print(f"Error getting fee estimates: {e}")
         logging.error(f"Error getting fee estimates: {e}")
         return None, None, None
 def on_escape(event):
@@ -127,16 +120,14 @@ def get_fee_estimates(rpc_connection):
         high_priority = rpc_connection.estimatesmartfee(1)
         medium_priority = rpc_connection.estimatesmartfee(6)
         low_priority = rpc_connection.estimatesmartfee(144)
-        # print(f"L{low_priority} M{medium_priority} H{high_priority}")
+
         # Extract the fee rates and convert to sats/vB
         high_fee = int(high_priority['feerate'] * 100000000)  # Convert BTC/kB to sat/vB
         medium_fee = int(medium_priority['feerate'] * 100000000)
         low_fee = int(low_priority['feerate'] * 100000000)
-        # print(f"L{low_fee} M{medium_fee} H{high_fee}")
 
         return [low_fee, medium_fee, high_fee]
     except Exception as e:
-        print(f"Error getting fee estimates: {e}")
         logging.error(f"Error getting fee estimates: {e}")
         return None, None, None
 def get_bitcoin_price():
@@ -210,18 +201,14 @@ def get_bitcoin_price():
         else:
             return current_price, None, None
     except requests.RequestException as e:
-        print(f"Error fetching price data: {e}")
         logging.error(f"Error fetching price data: {e}")
         return None, None, None
 def update_price_chart():
     global last_price_update, fig, canvas, ax
     current_time = time.time()
-    # print(f"Update Price Chart function: Check time? : {current_time-last_price_update} : Update over 3600")
     if current_time - last_price_update >= config['update_intervals']['price']:  # Update every hour # This is in seconds # Change to 3600 for 1 hour
-        # print("yes!")
         try:
             current_price, daily_change, prices = get_bitcoin_price()
-            print(f"Current Price: {current_price}")
             if prices:
                 fig.clear()
                 ax = fig.add_subplot(111)
@@ -233,9 +220,9 @@ def update_price_chart():
                 if daily_change >= 0: #TODO: Find a way to make the "+{daily_change} a different color than the title."
                     ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: +{daily_change}%", color='green', loc='left', fontsize=16)
                 else:
-                    ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: -{daily_change}%", color='red', loc='left', fontsize=16)
-                ax.set_xlabel("Time", color='white')
-                # ax.set_ylabel("Price (USD)", color='white')
+                    ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: -{abs(daily_change)}%", color='red', loc='left', fontsize=16)
+                # ax.set_xlabel("Time", color='white') # Do we really need this?
+                # ax.set_ylabel("Price (USD)", color='white') # Leaving incase someone does!
                 # Change axis colors to white
                 ax.spines['top'].set_color('white')
                 ax.spines['bottom'].set_color('white')
@@ -244,14 +231,17 @@ def update_price_chart():
                 # Change tick parameters
                 ax.tick_params(axis='x', colors='white')  # X-axis ticks
                 ax.tick_params(axis='y', colors='white')  # Y-axis ticks
-                ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-                plt.xticks(rotation=45)
+                if time_series.lower() == "standard": # if time_series is set to standard
+                    ax.xaxis.set_major_formatter(mdates.DateFormatter('%-I:%M %p'))
+                else: # Otherwise, any other string returns military/Zulu.
+                    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+                
                 # Define the currency formatter
                 currency_formatter = mticker.FuncFormatter(lambda x, _: f'${x:,.0f}')
 
                 # Set the y-axis major formatter
                 ax.yaxis.set_major_formatter(currency_formatter)
-                fig.tight_layout(pad=1.5) # Increased padding for X axis
+                fig.tight_layout() # Increased padding for X axis
                 # fig.tight_layout(rect=[0, 0.03, 1, 0.95])
                 canvas.draw()
             last_price_update = current_time
@@ -316,12 +306,9 @@ def update_node_table(blockchain_data, network_data, fees):
 def update_price_chart():
     global last_price_update, fig, canvas, ax
     current_time = time.time()
-    # print(f"Update Price Chart function: Check time? : {current_time-last_price_update} : Update over 3600")
     if current_time - last_price_update >= config['update_intervals']['price']:  # Update every hour # This is in seconds # Change to 3600 for 1 hour
-        # print("yes!")
         try:
             current_price, daily_change, prices = get_bitcoin_price()
-            print(f"Current Price: {current_price}")
             if prices:
                 fig.clear()
                 ax = fig.add_subplot(111)
@@ -333,9 +320,9 @@ def update_price_chart():
                 if daily_change >= 0: #TODO: Find a way to make the "+{daily_change} a different color than the title."
                     ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: +{daily_change}%", color='green', loc='left', fontsize=16)
                 else:
-                    ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: -{daily_change}%", color='red', loc='left', fontsize=16)
-                ax.set_xlabel("Time", color='white')
-                # ax.set_ylabel("Price (USD)", color='white')
+                    ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: -{abs(daily_change)}%", color='red', loc='left', fontsize=16)
+                # ax.set_xlabel("Time", color='white') # Do we really need this?
+                # ax.set_ylabel("Price (USD)", color='white') # Leaving incase someone does!
                 # Change axis colors to white
                 ax.spines['top'].set_color('white')
                 ax.spines['bottom'].set_color('white')
@@ -344,14 +331,17 @@ def update_price_chart():
                 # Change tick parameters
                 ax.tick_params(axis='x', colors='white')  # X-axis ticks
                 ax.tick_params(axis='y', colors='white')  # Y-axis ticks
-                ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-                plt.xticks(rotation=45)
+                if time_series.lower() == "standard": # if time_series is set to standard
+                    ax.xaxis.set_major_formatter(mdates.DateFormatter('%-I:%M %p'))
+                else: # Otherwise, any other string returns military/Zulu.
+                    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+                
                 # Define the currency formatter
                 currency_formatter = mticker.FuncFormatter(lambda x, _: f'${x:,.0f}')
 
                 # Set the y-axis major formatter
                 ax.yaxis.set_major_formatter(currency_formatter)
-                fig.tight_layout(pad=1.5) # Increased padding for X axis
+                fig.tight_layout() # Increased padding for X axis
                 # fig.tight_layout(rect=[0, 0.03, 1, 0.95])
                 canvas.draw()
             last_price_update = current_time
@@ -392,7 +382,6 @@ def update_node_table(blockchain_data, network_data, fees):
     # Get fee estimates
     
     # Create or update the legend here
-    # print(f"Blockchain Status: {blockchain_verification_progress}")
     if ax is not None:  # Ensure ax is defined
         if str(blockchain_verification_progress) == '100.00%':
             sync_text = 'OK'
@@ -460,7 +449,6 @@ def update_blockchain_info():
     # Trying to pass in blockchain and network info to this update function.
     current_time = time.time()
     # print(f"Update Blockchain info?: {current_time - last_blockchain_update} >= 600")
-    print(f"Getting node info function here")
     if current_time - last_blockchain_update >= config['update_intervals']['blockchain']: # 600 seconds = 10 minutes
         if saved_timestamp == get_timestamp():
             print("Node not available - Check node connection!")
@@ -468,7 +456,6 @@ def update_blockchain_info():
         else:
             try: # Let's update info
                 new_chain_info, new_network_info, fees = get_node_info(rpc_connection)
-                print(f"Successful connection if not 'none' {get_timestamp()}: {new_chain_info}")
                 saved_timestamp = get_timestamp()
                 # If successful go to bottom to call update_node_table function
                 update_node_table(new_chain_info, new_network_info, fees) # Call the update function if we're able to connect
@@ -476,24 +463,14 @@ def update_blockchain_info():
                 previous_chain = new_chain_info         # Update variable with newest data
                 previous_network = new_network_info     # Update variable with newest data
                 previous_fees = fees
-                last_blockchain_update = current_time   # Update the last update time before exiting udpate function
-                
-                # print("Closing connection")
-                # rpc_connection._BaseProxy__client.close() # Not working
-                
+                last_blockchain_update = current_time   # Update the last update time before exiting udpate function                
+
             except Exception as e: # Failure of RPC connection here
-                    print(f"{get_timestamp()} - Error updating blockchain info first try: {e}")
-                    logging.error(f"{get_timestamp()} - Error updating blockchain info: {e}")
+                    logging.error(f"{get_timestamp()} - Error updating blockchain info: Expected on first try. {e}")
                     try: # Attempt to reconnect
-                        print("Retrying update: ******************")
                         update_blockchain_info() # Retry the blockchain pull
                     except Exception as e:
-                        print(f"{get_timestamp()} - Failed to reconnect. Will try again in the next update. {e}")
-                        logging.error(f"{get_timestamp()} - Failed to reconnect. Will try again in the next update. {e}")
-                        logging.error(f"Update failed: Data retained, looping back! {e}")
-                        #TODO: Rerun the labels with blockchain_info and network_info
-                        print(f"Error: Using previous chain info {previous_chain}")
-                        # update_node_table(previous_chain, previous_network, previous_fees) # Update the table with the old data.
+                        logging.error(f"{get_timestamp()} - UNEXPECTED - Failed to reconnect. Will try again in the next update. {e}")
 
 def format_difficulty(difficulty):
     if difficulty >= 1_000_000_000_000:  # If it's in trillions
@@ -521,9 +498,11 @@ def create_display():
     root.grid_rowconfigure(1, weight=1)
     
     root.bind('<Escape>', on_escape) # this line binds the Escape key
-    exit_button = tk.Button(root, text="Exit", command=root.quit, bg='red', fg='white') # Add this line to create an exit button on touch screen
-    exit_button.place(relx=1.0, rely=0.0, anchor='ne')  # Place in top-right corner
-    # Variables for long press detection
+    exit_button = tk.Button(root, text="Exit", command=root.quit, 
+                        bg='#202222', fg='white',
+                        bd=0, highlightthickness=0,
+                        activebackground='#202222', activeforeground='red')
+    exit_button.place(relx=1.0, rely=0.01, anchor='ne')  # Place in top-right corner# Variables for long press detection
     press_start_time = [None]
     long_press_duration = 2  # seconds
 
@@ -549,9 +528,11 @@ def create_display():
     root.grid_rowconfigure(1, weight=1)
     
     root.bind('<Escape>', on_escape) # this line binds the Escape key
-    exit_button = tk.Button(root, text="Exit", command=root.quit, bg='red', fg='white') # Add this line to create an exit button on touch screen
-    exit_button.place(relx=1.0, rely=0.0, anchor='ne')  # Place in top-right corner
-    # Variables for long press detection
+    exit_button = tk.Button(root, text="Exit", command=root.quit, 
+                        bg='#202222', fg='white',
+                        bd=0, highlightthickness=0,
+                        activebackground='#202222', activeforeground='red')
+    exit_button.place(relx=1.0, rely=0.01, anchor='ne')  # Place in top-right corner# Variables for long press detection
     press_start_time = [None]
     long_press_duration = 2  # seconds
 
@@ -579,23 +560,8 @@ def create_display():
     canvas = FigureCanvasTkAgg(fig, master=chart_frame)
     canvas.draw()
     canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
-    # Create a frame for the chart
-    chart_frame = ttk.Frame(root)
-    chart_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-
-    # Create an initial empty chart
-    fig = plt.Figure(figsize=(8, 3))
-    canvas = FigureCanvasTkAgg(fig, master=chart_frame)
-    canvas.draw()
-    canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+    
     def update_display():
-        # print("Updating price?")
-        update_price_chart()
-        exit_button.lift()  # Ensure the exit button stays on top
-        update_blockchain_info()
-        root.after(min(config['update_intervals']['price'], config['update_intervals']['blockchain']) * 1000, update_display)  # Schedule next price update from min value of intervals
-    update_display()
-        # print("Updating price?")
         update_price_chart()
         exit_button.lift()  # Ensure the exit button stays on top
         update_blockchain_info()
@@ -604,6 +570,6 @@ def create_display():
     return root
 
 # Create and run the display
-root = create_display()
-root = create_display()
+root = create_display() # Initial call
+root.config(cursor="none") # Get rid of that blasted cursor!
 root.mainloop()

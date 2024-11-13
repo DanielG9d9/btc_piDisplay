@@ -1,0 +1,3 @@
+python-bitcoinrpc
+requests
+matplotlib
