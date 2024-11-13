@@ -71,8 +71,7 @@ Follow these steps to install and set up the project:
     cd btc_piDisplay/
 4. Run the install.sh file.
     ```bash
-    ./install.sh # Run the script file to install dependencies.
-
+    ./install.sh # Run the script file to install dependencies.    
 ## Manually Starting The Program
 If you need to manually start the display after a reboot or any reason you can easily do so by double clicking the Run Display.sh icon and "Execute."  
   

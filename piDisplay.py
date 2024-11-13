@@ -250,7 +250,7 @@ def update_node_table(blockchain_data, network_data, fees):
             feeText = TextArea("Fees (sat/vB): ", textprops=dict(color='white', fontsize=12))
             feeNumbers = TextArea(f"L:{low_fee:,} M:{medium_fee:,} H:{high_fee:,}", textprops=dict(color='yellow', fontsize=12))
         else:
-            feeText = TextArea("Blockchain sync in progress", textprops=dict(color='white', fontsize=12))
+            feeText = TextArea("Blockchain sync in progress", textprops=dict(color='orange', fontsize=12))
             feeNumbers = TextArea("", textprops=dict(color='yellow', fontsize=12))
         # TODO: Add connections in and out!
         
@@ -301,7 +301,6 @@ def update_blockchain_info(force_update=False):
                 previous_network = new_network_info     # Update variable with newest data
                 previous_fees = fees
                 last_blockchain_update = current_time   # Update the last update time before exiting udpate function                
-
             except Exception as e: # Failure of RPC connection here
                     logging.error(f"{get_timestamp()} - Error updating blockchain info: Expected on first try. {e}")
                     try: # Attempt to reconnect
@@ -348,9 +347,9 @@ def create_display():
         if press_start_time[0] is not None:
             press_duration = time.time() - press_start_time[0]
             if press_duration >= long_press_duration:
+                create_display()
                 update_price_chart(force_update=True)
                 update_blockchain_info(force_update=True)
-                create_display()
         press_start_time[0] = None
 
     root.bind('<ButtonPress-1>', on_press)

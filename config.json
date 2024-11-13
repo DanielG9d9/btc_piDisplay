@@ -19,7 +19,7 @@
             "rpc_port": "8332" 
         }
     },
-    "connect_to": "parman",
+    "connect_to": "parmanode",
     "time_series": "military",
     "update_intervals": {
         "__comment": "These are in seconds",

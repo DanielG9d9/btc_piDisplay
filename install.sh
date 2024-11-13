@@ -61,6 +61,7 @@ done
 echo "You will need to update the config file with your RPC node connection as well as the desired update intervals..."
 read -p "Would you like to do that now? (Y/N): " user_input
 if [ "${user_input^^}" = "Y" ]; then
+    echo "########################################################################"
     echo "Update rpc_settings with your node information here!"
     echo "You may delete any extra examples if you wish! There are three in rpc_settings."
     echo "Next, update the 'connect_to' variable to the name you used in rpc_settings."
