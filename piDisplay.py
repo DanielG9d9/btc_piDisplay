@@ -388,7 +388,15 @@ def create_display():
     update_display()
     return root
 
+display_error = "no display name"
 # Create and run the display
-root = create_display() # Initial call
-root.config(cursor="none") # Get rid of that blasted cursor!
-root.mainloop()
+try:
+    root = create_display() # Initial call
+    root.config(cursor="none") # Get rid of that blasted cursor!
+    root.mainloop()
+except tk.TclError as e: # Catch when DISPLAY is not setup correctly.
+    logging.error(f"An error occured while creating the display. {e} \n Normally this can be fixed by adding 'DISPLAY=:0.0' to bitcoin_env/bin/activate line 38. ")
+except KeyboardInterrupt as e: # Catch when user interupts program.
+    logging.error(f"User interupted program. {e}. Are you trying to start remotely? Use 'nohup' before running. 'nohup python3 piDisplay.py'")
+except Exception as e: # Catch all other errors here.
+    logging.error(f"An error occurred when initializing the app. {e}")
