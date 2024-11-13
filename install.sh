@@ -38,7 +38,6 @@ if [ "${user_input^^}" = "Y" ]; then
 source $project_file_path/$btc_venv # This should point to the virtual environment of the repository.
 
 # Run the Python script
-# nohup python3 $project_file_path/$program_name > /home/$USER/Desktop/bitcoin_display.log 2>&1 & # Launch app with nohop so you can close the terminal. May not need this. Delete.
 python3 $project_file_path/$program_name
 
 EOF
@@ -73,4 +72,4 @@ echo "Launching APP!"
 printf '%.3s' "..." # echo three . to create space
 nohup "./Test Run Display.sh" > /home/$USER/Desktop/bitcoin_display.log 2>&1 & # Launch app with nohop so you can close the terminal.# Update to Run Display.sh
 echo "########################################################################"
-echo '********************** DONE ********************************************"
+echo "********************** DONE ********************************************"
