@@ -40,13 +40,14 @@ Recommended node software:
 2. RaspiBlitz - https://github.com/raspiblitz/raspiblitz
 
 ## Ready pi
-Follow these steps if you're trying to run a new Pi Display.
+Follow these steps if you're trying to run a new Pi Display. You can copy / paste directly into the terminal.
 1. Download the Pi imager from [here](https://www.raspberrypi.com/software/).
 2. Open the imager.
 3. Insert your Pi SD card into your computer.
 4. Select your Pi device, OS, and storage option from the menu.
     - Raspberry Pi OS (64-bit) is what I used.
 5. Click Next. You can opt to customize your settings so the Pi can connect to WiFi as soon as it boots. Make sure you click 'YES' after changing the settings.
+    - If you set your hostname to satoshi then you won't need to update a filepath later on if that's worth anything.
     - Some beneficial settings include enabling SSH and setting country WLAN and timezone. Those can be changed from desktop preferences on the Pi though too.
     - ENABLE SSH AND USE PASSWORD AUTHENTICATION!
 6. Confirm settings and write to the SD card.
@@ -57,7 +58,7 @@ Follow these steps if you're trying to run a new Pi Display.
 Follow these steps to install and set up the project:
 1. Navigate to where the repository will live.
     ```bash
-    cd /home/$USER/Documents # Replace $USER with your user profile name.
+    cd /home/$USER/Documents # No need to replace $USER with your user profile name.
 
 2. Clone the repository: 
     - I have used /home/$USER/Documents as my repository directory.
@@ -65,7 +66,7 @@ Follow these steps to install and set up the project:
     git clone https://github.com/DanielG9d9/btc_piDisplay.git # This will clone the repository to the directory you run the command from.
 
 3. Navigate to the repository folder you just created:
-    - If you are not starting from the line above you may need to 'cd' from root `cd /home/$USER/Documents/btc_piDisplay # Replace $USER with your user profile name.`
+    - If you are not starting from the line above you may need to 'cd' from root `cd /home/$USER/Documents/btc_piDisplay # No need to replace $USER with your user profile name.`
     ```bash
     cd btc_piDisplay/
 4. Run the install.sh file.

@@ -250,7 +250,7 @@ def update_node_table(blockchain_data, network_data, fees):
             feeText = TextArea("Fees (sat/vB): ", textprops=dict(color='white', fontsize=12))
             feeNumbers = TextArea(f"L:{low_fee:,} M:{medium_fee:,} H:{high_fee:,}", textprops=dict(color='yellow', fontsize=12))
         else:
-            feeText = TextArea("", textprops=dict(color='white', fontsize=12))
+            feeText = TextArea("Blockchain sync in progress", textprops=dict(color='white', fontsize=12))
             feeNumbers = TextArea("", textprops=dict(color='yellow', fontsize=12))
         # TODO: Add connections in and out!
         
