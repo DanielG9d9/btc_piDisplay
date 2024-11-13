@@ -18,7 +18,6 @@ from matplotlib.offsetbox import AnchoredOffsetbox, TextArea, VPacker, HPacker
 import json
 
 # Load configuration
-# with open('../btc_piDisplay/config.json', 'r') as config_file: # Working on Desktop but not from Pi
 with open('/home/satoshi/Documents/btc_piDisplay/config.json', 'r') as config_file: # Not working!
     config = json.load(config_file)
 
@@ -58,19 +57,6 @@ node_connections = ""
 cpu_temp = ""
 ax = None
 saved_timestamp = ""
-
-# Replace with your Parmanode's RPC credentials
-# connect_to = 'raspiblitz' # or "parmanode"
-# if connect_to == 'raspiblitz':
-#     rpc_user = 'raspibolt'
-#     rpc_host = '192.168.86.68'  # localhost
-# else:
-#     rpc_user = 'satoshi'
-#     rpc_host = '192.168.86.49'  # localhost
-
-# rpc_password = 'Waffle9d9RPC123PaSSw0rd'
-# rpc_port = '8332'  # default Bitcoin Core RPC port
-
 
 rpc_connection = AuthServiceProxy(f"http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}", timeout=30)
 
@@ -362,7 +348,7 @@ def create_display():
         if press_start_time[0] is not None:
             press_duration = time.time() - press_start_time[0]
             if press_duration >= long_press_duration:
-                root.quit()
+                update_price_chart()
         press_start_time[0] = None
 
     root.bind('<ButtonPress-1>', on_press)
