@@ -14,7 +14,6 @@ import logging
 import json
 import matplotlib.ticker as mticker
 import numpy as np
-# from matplotlib.patches import Rectangle
 from matplotlib.offsetbox import AnchoredOffsetbox, TextArea, VPacker, HPacker
 import json
 
@@ -46,10 +45,6 @@ logging.basicConfig(
 # RPC connection
 rpc_connection = AuthServiceProxy(f"http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}", timeout=30)
 
-
-# testing = True # Turn to true when testing so you don't ping for price a lot
-# CACHE_FILE = 'bitcoin_price_cache.json'
-
 # Global Variables
 last_price_update = 0 # Variable for tracking when to update price
 last_blockchain_update = 0 # Variable for tracking when to update blockchain info
@@ -65,16 +60,16 @@ ax = None
 saved_timestamp = ""
 
 # Replace with your Parmanode's RPC credentials
-connect_to = 'raspiblitz' # or "parmanode"
-if connect_to == 'raspiblitz':
-    rpc_user = 'raspibolt'
-    rpc_host = '192.168.86.68'  # localhost
-else:
-    rpc_user = 'satoshi'
-    rpc_host = '192.168.86.49'  # localhost
+# connect_to = 'raspiblitz' # or "parmanode"
+# if connect_to == 'raspiblitz':
+#     rpc_user = 'raspibolt'
+#     rpc_host = '192.168.86.68'  # localhost
+# else:
+#     rpc_user = 'satoshi'
+#     rpc_host = '192.168.86.49'  # localhost
 
-rpc_password = 'Waffle9d9RPC123PaSSw0rd'
-rpc_port = '8332'  # default Bitcoin Core RPC port
+# rpc_password = 'Waffle9d9RPC123PaSSw0rd'
+# rpc_port = '8332'  # default Bitcoin Core RPC port
 
 
 rpc_connection = AuthServiceProxy(f"http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}", timeout=30)
@@ -99,16 +94,14 @@ def get_fee_estimates(rpc_connection):
         high_priority = rpc_connection.estimatesmartfee(1)
         medium_priority = rpc_connection.estimatesmartfee(6)
         low_priority = rpc_connection.estimatesmartfee(144)
-        # print(f"L{low_priority} M{medium_priority} H{high_priority}")
+
         # Extract the fee rates and convert to sats/vB
         high_fee = int(high_priority['feerate'] * 100000000)  # Convert BTC/kB to sat/vB
         medium_fee = int(medium_priority['feerate'] * 100000000)
         low_fee = int(low_priority['feerate'] * 100000000)
-        # print(f"L{low_fee} M{medium_fee} H{high_fee}")
 
         return [low_fee, medium_fee, high_fee]
     except Exception as e:
-        print(f"Error getting fee estimates: {e}")
         logging.error(f"Error getting fee estimates: {e}")
         return None, None, None
 def get_bitcoin_price():
@@ -160,18 +153,14 @@ def get_bitcoin_price():
         else:
             return current_price, None, None
     except requests.RequestException as e:
-        print(f"Error fetching price data: {e}")
         logging.error(f"Error fetching price data: {e}")
         return None, None, None
 def update_price_chart():
     global last_price_update, fig, canvas, ax
     current_time = time.time()
-    # print(f"Update Price Chart function: Check time? : {current_time-last_price_update} : Update over 3600")
     if current_time - last_price_update >= config['update_intervals']['price']:  # Update every hour # This is in seconds # Change to 3600 for 1 hour
-        # print("yes!")
         try:
             current_price, daily_change, prices = get_bitcoin_price()
-            print(f"Current Price: {current_price}")
             if prices:
                 fig.clear()
                 ax = fig.add_subplot(111)
@@ -185,7 +174,7 @@ def update_price_chart():
                 else:
                     ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: -{abs(daily_change)}%", color='red', loc='left', fontsize=16)
                 # ax.set_xlabel("Time", color='white') # Do we really need this?
-                # ax.set_ylabel("Price (USD)", color='white')
+                # ax.set_ylabel("Price (USD)", color='white') # Leaving incase someone does!
                 # Change axis colors to white
                 ax.spines['top'].set_color('white')
                 ax.spines['bottom'].set_color('white')
@@ -198,13 +187,13 @@ def update_price_chart():
                     ax.xaxis.set_major_formatter(mdates.DateFormatter('%-I:%M %p'))
                 else: # Otherwise, any other string returns military/Zulu.
                     ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-                plt.xticks(rotation=45)
+                
                 # Define the currency formatter
                 currency_formatter = mticker.FuncFormatter(lambda x, _: f'${x:,.0f}')
 
                 # Set the y-axis major formatter
                 ax.yaxis.set_major_formatter(currency_formatter)
-                fig.tight_layout(pad=1.5) # Increased padding for X axis
+                fig.tight_layout() # Increased padding for X axis
                 # fig.tight_layout(rect=[0, 0.03, 1, 0.95])
                 canvas.draw()
             last_price_update = current_time
@@ -245,7 +234,6 @@ def update_node_table(blockchain_data, network_data, fees):
     # Get fee estimates
     
     # Create or update the legend here
-    # print(f"Blockchain Status: {blockchain_verification_progress}")
     if ax is not None:  # Ensure ax is defined
         if str(blockchain_verification_progress) == '100.00%':
             sync_text = 'OK'
@@ -313,7 +301,6 @@ def update_blockchain_info():
     # Trying to pass in blockchain and network info to this update function.
     current_time = time.time()
     # print(f"Update Blockchain info?: {current_time - last_blockchain_update} >= 600")
-    print(f"Getting node info function here")
     if current_time - last_blockchain_update >= config['update_intervals']['blockchain']: # 600 seconds = 10 minutes
         if saved_timestamp == get_timestamp():
             print("Node not available - Check node connection!")
@@ -321,7 +308,6 @@ def update_blockchain_info():
         else:
             try: # Let's update info
                 new_chain_info, new_network_info, fees = get_node_info(rpc_connection)
-                print(f"Successful connection if not 'none' {get_timestamp()}: {new_chain_info}")
                 saved_timestamp = get_timestamp()
                 # If successful go to bottom to call update_node_table function
                 update_node_table(new_chain_info, new_network_info, fees) # Call the update function if we're able to connect
@@ -329,24 +315,14 @@ def update_blockchain_info():
                 previous_chain = new_chain_info         # Update variable with newest data
                 previous_network = new_network_info     # Update variable with newest data
                 previous_fees = fees
-                last_blockchain_update = current_time   # Update the last update time before exiting udpate function
-                
-                # print("Closing connection")
-                # rpc_connection._BaseProxy__client.close() # Not working
-                
+                last_blockchain_update = current_time   # Update the last update time before exiting udpate function                
+
             except Exception as e: # Failure of RPC connection here
-                    print(f"{get_timestamp()} - Error updating blockchain info first try: {e}")
-                    logging.error(f"{get_timestamp()} - Error updating blockchain info: {e}")
+                    logging.error(f"{get_timestamp()} - Error updating blockchain info: Expected on first try. {e}")
                     try: # Attempt to reconnect
-                        print("Retrying update: ******************")
                         update_blockchain_info() # Retry the blockchain pull
                     except Exception as e:
-                        print(f"{get_timestamp()} - Failed to reconnect. Will try again in the next update. {e}")
-                        logging.error(f"{get_timestamp()} - Failed to reconnect. Will try again in the next update. {e}")
-                        logging.error(f"Update failed: Data retained, looping back! {e}")
-                        #TODO: Rerun the labels with blockchain_info and network_info
-                        print(f"Error: Using previous chain info {previous_chain}")
-                        # update_node_table(previous_chain, previous_network, previous_fees) # Update the table with the old data.
+                        logging.error(f"{get_timestamp()} - UNEXPECTED - Failed to reconnect. Will try again in the next update. {e}")
 
 def format_difficulty(difficulty):
     if difficulty >= 1_000_000_000_000:  # If it's in trillions
@@ -404,8 +380,8 @@ def create_display():
     canvas = FigureCanvasTkAgg(fig, master=chart_frame)
     canvas.draw()
     canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+    
     def update_display():
-        # print("Updating price?")
         update_price_chart()
         exit_button.lift()  # Ensure the exit button stays on top
         update_blockchain_info()
@@ -414,6 +390,6 @@ def create_display():
     return root
 
 # Create and run the display
-root = create_display()
-root.config(cursor="none")
+root = create_display() # Initial call
+root.config(cursor="none") # Get rid of that blasted cursor!
 root.mainloop()

@@ -38,7 +38,8 @@ My build consists of a raspberry pi 4 (8gb), 1 TB HHD, and a 5" display from [Am
 Follow these steps to install and set up the project:
 
 1. Clone the repository: 
-    - Be sure to 'cd' into the folder you want this to live in
+    - Be sure to 'cd' into the folder you want this to live in.
+    - I have used /home/$USER/Documents as my repository directory.
     ```bash
     cd /home/$USER/Documents # Replace $USER with your user profile name.
 
@@ -46,7 +47,7 @@ Follow these steps to install and set up the project:
 
 2. Navigate to the repository folder
     ```bash
-    cd /home/$USER/Documents/btc_piDisplay
+    cd /home/$USER/Documents/btc_piDisplay # Replace $USER with your user profile name.
 3. Run the install.sh file
     ```bash
-    ./install.sh
+    ./install.sh # Run the script file to install dependencies.
