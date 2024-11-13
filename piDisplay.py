@@ -282,11 +282,11 @@ def update_node_table(blockchain_data, network_data, fees):
         canvas.draw_idle() # Update the canvas to reflect the changes
     return  
 
-def update_blockchain_info():
+def update_blockchain_info(force_update=False):
     global last_blockchain_update, blockchain_chain, blockchain_blocks, blockchain_verification_progress, node_connections, cpu_temp, previous_chain, previous_network, previous_fees, saved_timestamp
     # Trying to pass in blockchain and network info to this update function.
     current_time = time.time()
-    if current_time - last_blockchain_update >= config['update_intervals']['blockchain']: # 600 seconds = 10 minutes
+    if force_update or (current_time - last_blockchain_update >= config['update_intervals']['blockchain']): # 600 seconds = 10 minutes
         if saved_timestamp == get_timestamp():
             print("Node not available - Check node connection!")
             logging.error(f"Error connecting to RPC Node. {saved_timestamp}")
@@ -349,6 +349,7 @@ def create_display():
             press_duration = time.time() - press_start_time[0]
             if press_duration >= long_press_duration:
                 update_price_chart(force_update=True)
+                update_blockchain_info(force_update=True)
         press_start_time[0] = None
 
     root.bind('<ButtonPress-1>', on_press)
