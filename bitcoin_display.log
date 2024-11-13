@@ -1,0 +1,14 @@
+2024-11-09 20:44:02 - ERROR - 2024-11-09 20:44:02 - Error updating blockchain info: [WinError 10053] An established connection was aborted by the software in your host machine
+2024-11-09 20:44:02 - ERROR - 2024-11-09 20:44:02 - Failed to reconnect. Will try again in the next update. Request-sent
+2024-11-10 00:05:43 - ERROR - 2024-11-10 00:05:43 - Error updating blockchain info: could not convert string to float: ''
+2024-11-10 00:05:43 - ERROR - 2024-11-10 00:05:43 - Failed to reconnect. Will try again in the next update. -32601: Method not found
+2024-11-10 00:05:43 - ERROR - 2024-11-10 00:05:43 - Error updating blockchain info: could not convert string to float: ''
+2024-11-10 00:05:43 - ERROR - 2024-11-10 00:05:43 - Failed to reconnect. Will try again in the next update. -32601: Method not found
+2024-11-10 00:06:19 - ERROR - 2024-11-10 00:06:19 - Error updating blockchain info: '>=' not supported between instances of 'str' and 'int'
+2024-11-10 00:06:19 - ERROR - 2024-11-10 00:06:19 - Failed to reconnect. Will try again in the next update. -32601: Method not found
+2024-11-10 00:06:19 - ERROR - 2024-11-10 00:06:19 - Error updating blockchain info: '>=' not supported between instances of 'str' and 'int'
+2024-11-10 00:06:19 - ERROR - 2024-11-10 00:06:19 - Failed to reconnect. Will try again in the next update. -32601: Method not found
+2024-11-10 00:08:50 - ERROR - 2024-11-10 00:08:50 - Error updating blockchain info: -28: Verifying blocks…
+2024-11-10 00:08:50 - ERROR - 2024-11-10 00:08:50 - Failed to reconnect. Will try again in the next update. -28: Verifying blocks…
+2024-11-10 00:08:50 - ERROR - 2024-11-10 00:08:50 - Error updating blockchain info: -28: Verifying blocks…
+2024-11-10 00:08:50 - ERROR - 2024-11-10 00:08:50 - Failed to reconnect. Will try again in the next update. -28: Verifying blocks…
