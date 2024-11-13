@@ -141,10 +141,10 @@ def get_bitcoin_price():
     except requests.RequestException as e:
         logging.error(f"Error fetching price data: {e}")
         return None, None, None
-def update_price_chart():
+def update_price_chart(force_update=False):
     global last_price_update, fig, canvas, ax
     current_time = time.time()
-    if current_time - last_price_update >= config['update_intervals']['price']:  # Update every hour # This is in seconds # Change to 3600 for 1 hour
+    if force_update or (current_time - last_price_update >= config['update_intervals']['price']):  # Update every hour # This is in seconds # Change to 3600 for 1 hour
         try:
             current_price, daily_change, prices = get_bitcoin_price()
             if prices:
@@ -348,7 +348,7 @@ def create_display():
         if press_start_time[0] is not None:
             press_duration = time.time() - press_start_time[0]
             if press_duration >= long_press_duration:
-                update_price_chart()
+                update_price_chart(force_update=True)
         press_start_time[0] = None
 
     root.bind('<ButtonPress-1>', on_press)
