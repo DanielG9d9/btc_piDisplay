@@ -350,6 +350,7 @@ def create_display():
             if press_duration >= long_press_duration:
                 update_price_chart(force_update=True)
                 update_blockchain_info(force_update=True)
+                create_display()
         press_start_time[0] = None
 
     root.bind('<ButtonPress-1>', on_press)
