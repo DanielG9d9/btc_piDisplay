@@ -33,6 +33,8 @@ sudo apt-get install -y git python3-venv
 #########################
 echo "Creating virtual environment..."
 python3 -m venv bitcoin_env
+echo "Updating DISPLAY variable"
+sed -i '38i export DISPLAY=:0.0' filename
 echo "Activating environment"
 source bitcoin_env/bin/activate
 
@@ -72,6 +74,7 @@ if [ "${user_input^^}" = "Y" ]; then
     nano config.json # Open the config file for editing
 fi
 
+read -p "You also need to add a line for the display variable
 echo "Installation complete!"
 cd /home/$USER/Desktop/
 echo "Launching APP!"
