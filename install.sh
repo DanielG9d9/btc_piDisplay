@@ -30,7 +30,7 @@ deactivate
 read -p "Would you like to create a desktop icon to run your script? (Y/N): " user_input
 if [ "${user_input^^}" = "Y" ]; then
     cd /home/$USER/Desktop/
-    cat << EOF > "Test Run Display.sh" # Update to Run Display.sh
+    cat << EOF > "Run Display.sh" # Update to Run Display.sh
 #!/bin/bash
 
 # Activate the virtual environment
@@ -40,7 +40,7 @@ source $project_file_path/$btc_venv # This should point to the virtual environme
 python3 $project_file_path/$program_name
 
 EOF
-    chmod +x "Test Run Display.sh"
+    chmod +x "Run Display.sh"
 fi
 echo "########################################################################"
 # Any additional setup steps
@@ -80,10 +80,12 @@ done
 echo "Installation complete!"
 cd /home/$USER/Desktop/
 echo "Launching APP!"
+
 for i in {1..3}; do # Sleep for 3 seconds.
     echo "."
     sleep 1 # echo three . to create space
 done
 nohup "./Test Run Display.sh" > /home/$USER/Desktop/bitcoin_display.log 2>&1 & # Launch app with nohop so you can close the terminal.# Update to Run Display.sh
+
 echo "########################################################################"
 echo "********************** DONE ********************************************"
