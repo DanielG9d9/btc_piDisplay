@@ -85,10 +85,38 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+logging.basicConfig(
+    filename='bitcoin_display.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 # Functions
 def get_cpu_temp():
     temp = os.popen("vcgencmd measure_temp").readline()
     return float(temp.replace("temp=","").replace("'C",""))
+def on_escape(event):
+    root.quit()
+def get_timestamp():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+def get_fee_estimates(rpc_connection):
+    try:
+        # Get fee estimates for 1, 6, and 144 blocks (high, medium, low priority)
+        high_priority = rpc_connection.estimatesmartfee(1)
+        medium_priority = rpc_connection.estimatesmartfee(6)
+        low_priority = rpc_connection.estimatesmartfee(144)
+        # print(f"L{low_priority} M{medium_priority} H{high_priority}")
+        # Extract the fee rates and convert to sats/vB
+        high_fee = int(high_priority['feerate'] * 100000000)  # Convert BTC/kB to sat/vB
+        medium_fee = int(medium_priority['feerate'] * 100000000)
+        low_fee = int(low_priority['feerate'] * 100000000)
+        # print(f"L{low_fee} M{medium_fee} H{high_fee}")
+
+        return [low_fee, medium_fee, high_fee]
+    except Exception as e:
+        print(f"Error getting fee estimates: {e}")
+        logging.error(f"Error getting fee estimates: {e}")
+        return None, None, None
 def on_escape(event):
     root.quit()
 def get_timestamp():
@@ -128,7 +156,26 @@ def get_bitcoin_price():
         response.raise_for_status()
         current_data = response.json()
         current_price = current_data["bitcoin"]["usd"]
+    try:
+        if testing:
+            if os.path.exists(CACHE_FILE): # Check if cache file exists
+                with open(CACHE_FILE, 'r') as cache_file:
+                    cached_data = json.load(cache_file)
+                    current_price = cached_data["current_price"]
+                    daily_change = cached_data["daily_change"]
+                    prices = cached_data["prices"]
+                    print("Loaded price data from cache.")
+                    return current_price, daily_change, prices
+        # Current price
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+        response = requests.get(url)
+        response.raise_for_status()
+        current_data = response.json()
+        current_price = current_data["bitcoin"]["usd"]
 
+        # Previous close price (24 hours ago)
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=1)
         # Previous close price (24 hours ago)
         end_date = datetime.now()
         start_date = end_date - timedelta(days=1)
@@ -136,7 +183,110 @@ def get_bitcoin_price():
         # Convert to timestamps
         start_timestamp = int(start_date.timestamp())
         end_timestamp = int(end_date.timestamp())
+        # Convert to timestamps
+        start_timestamp = int(start_date.timestamp())
+        end_timestamp = int(end_date.timestamp())
 
+        historical_url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=usd&from={start_timestamp}&to={end_timestamp}"
+        historical_response = requests.get(historical_url)
+        historical_response.raise_for_status()
+        historical_data = historical_response.json()
+        prices = historical_data['prices']
+        
+        if prices:
+            previous_close_price = prices[0][1]  # The first entry is the oldest price (previous close)
+            daily_change = (current_price - previous_close_price) / previous_close_price * 100 # Daily Change as percentage
+            daily_change = round(daily_change, 2)
+            if testing:
+                with open(CACHE_FILE, 'w') as cache_file: # Save the fetched data to cache
+                    json.dump({
+                        "current_price": current_price,
+                        "daily_change": daily_change,
+                        "prices": prices
+                    }, cache_file)
+
+                print("Fetched and cached new price data.")
+            return current_price, daily_change, prices
+        else:
+            return current_price, None, None
+    except requests.RequestException as e:
+        print(f"Error fetching price data: {e}")
+        logging.error(f"Error fetching price data: {e}")
+        return None, None, None
+def update_price_chart():
+    global last_price_update, fig, canvas, ax
+    current_time = time.time()
+    # print(f"Update Price Chart function: Check time? : {current_time-last_price_update} : Update over 3600")
+    if current_time - last_price_update >= config['update_intervals']['price']:  # Update every hour # This is in seconds # Change to 3600 for 1 hour
+        # print("yes!")
+        try:
+            current_price, daily_change, prices = get_bitcoin_price()
+            print(f"Current Price: {current_price}")
+            if prices:
+                fig.clear()
+                ax = fig.add_subplot(111)
+                ax.set_facecolor('#202222') # Set the background color # Light gray background
+                dates = [datetime.fromtimestamp(price[0]/1000) for price in prices]
+                values = [price[1] for price in prices]
+                ax.plot(dates, values, color='orange') # Color of plt line (price)
+                fig.patch.set_facecolor('#191A1A')  # Slightly darker gray for figure background
+                if daily_change >= 0: #TODO: Find a way to make the "+{daily_change} a different color than the title."
+                    ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: +{daily_change}%", color='green', loc='left', fontsize=16)
+                else:
+                    ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: -{daily_change}%", color='red', loc='left', fontsize=16)
+                ax.set_xlabel("Time", color='white')
+                # ax.set_ylabel("Price (USD)", color='white')
+                # Change axis colors to white
+                ax.spines['top'].set_color('white')
+                ax.spines['bottom'].set_color('white')
+                ax.spines['left'].set_color('white')
+                ax.spines['right'].set_color('white')
+                # Change tick parameters
+                ax.tick_params(axis='x', colors='white')  # X-axis ticks
+                ax.tick_params(axis='y', colors='white')  # Y-axis ticks
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+                plt.xticks(rotation=45)
+                # Define the currency formatter
+                currency_formatter = mticker.FuncFormatter(lambda x, _: f'${x:,.0f}')
+
+                # Set the y-axis major formatter
+                ax.yaxis.set_major_formatter(currency_formatter)
+                fig.tight_layout(pad=1.5) # Increased padding for X axis
+                # fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+                canvas.draw()
+            last_price_update = current_time
+        except Exception as e:
+            print(f"Error updating price chart: {e}")
+            logging.error(f"Error updating price chart: {e}")
+def get_node_info(rpc_connection):
+    try:
+        blockchain_info = rpc_connection.getblockchaininfo()
+        network_info = rpc_connection.getnetworkinfo()
+        fees = get_fee_estimates(rpc_connection)
+        return blockchain_info, network_info, fees
+    except Exception as e:
+        logging.error(f"Error fetching node info: {e}")
+        return None, None, None
+def update_node_table(blockchain_data, network_data, fees):
+    # Store blockchain info in global variables
+    blockchain_chain = blockchain_data['chain']
+    blockchain_blocks = f"{blockchain_data['blocks']}/{blockchain_data['headers']}"
+    blockchain_verification_progress = f"{blockchain_data['verificationprogress'] * 100:.2f}%"
+    #TODO: 
+    # node_connections = f"{network_data['connections']}"
+    #TODO: 
+    # node_subversion = f"{network_data['subversion']}"
+    #TODO: 
+    # node_connections_in, node_connections_out = f"{network_data['connections_in']}", f"{network_data['connections_out']}"
+                
+    # Difficulty formatting
+    difficulty = blockchain_data['difficulty']
+    formatted_difficulty = format_difficulty(difficulty)
+    
+    if connect_to == 'raspiblitz':
+        # Do nothing
+        # print("Changed this cuz I'm on Pi.")
+        cpu_temp = get_cpu_temp()
         historical_url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=usd&from={start_timestamp}&to={end_timestamp}"
         historical_response = requests.get(historical_url)
         historical_response.raise_for_status()
@@ -357,8 +507,38 @@ def format_difficulty(difficulty):
 
 def create_display():
     global last_price_update, fig, canvas
+def create_display():
+    global last_price_update, fig, canvas
     root = tk.Tk()
     root.title("Bitcoin Node Information")
+    # Fullscreen this bish
+    root.overrideredirect(True)
+    root.geometry("{0}x{1}+0+0".format(root.winfo_screenwidth(), root.winfo_screenheight())) # WTF?
+    root.focus_set()  # <-- move focus to this widget
+
+    #Configure grid
+    root.grid_columnconfigure(0, weight=1)
+    root.grid_rowconfigure(1, weight=1)
+    
+    root.bind('<Escape>', on_escape) # this line binds the Escape key
+    exit_button = tk.Button(root, text="Exit", command=root.quit, bg='red', fg='white') # Add this line to create an exit button on touch screen
+    exit_button.place(relx=1.0, rely=0.0, anchor='ne')  # Place in top-right corner
+    # Variables for long press detection
+    press_start_time = [None]
+    long_press_duration = 2  # seconds
+
+    def on_press(event):
+        press_start_time[0] = time.time()
+
+    def on_release(event):
+        if press_start_time[0] is not None:
+            press_duration = time.time() - press_start_time[0]
+            if press_duration >= long_press_duration:
+                root.quit()
+        press_start_time[0] = None
+
+    root.bind('<ButtonPress-1>', on_press)
+    root.bind('<ButtonRelease-1>', on_release)
     # Fullscreen this bish
     root.overrideredirect(True)
     root.geometry("{0}x{1}+0+0".format(root.winfo_screenwidth(), root.winfo_screenheight())) # WTF?
@@ -399,7 +579,22 @@ def create_display():
     canvas = FigureCanvasTkAgg(fig, master=chart_frame)
     canvas.draw()
     canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+    # Create a frame for the chart
+    chart_frame = ttk.Frame(root)
+    chart_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+
+    # Create an initial empty chart
+    fig = plt.Figure(figsize=(8, 3))
+    canvas = FigureCanvasTkAgg(fig, master=chart_frame)
+    canvas.draw()
+    canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
     def update_display():
+        # print("Updating price?")
+        update_price_chart()
+        exit_button.lift()  # Ensure the exit button stays on top
+        update_blockchain_info()
+        root.after(min(config['update_intervals']['price'], config['update_intervals']['blockchain']) * 1000, update_display)  # Schedule next price update from min value of intervals
+    update_display()
         # print("Updating price?")
         update_price_chart()
         exit_button.lift()  # Ensure the exit button stays on top
@@ -409,5 +604,6 @@ def create_display():
     return root
 
 # Create and run the display
+root = create_display()
 root = create_display()
 root.mainloop()
