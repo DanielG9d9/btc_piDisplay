@@ -74,7 +74,6 @@ if [ "${user_input^^}" = "Y" ]; then
     nano config.json # Open the config file for editing
 fi
 
-read -p "You also need to add a line for the display variable
 echo "Installation complete!"
 cd /home/$USER/Desktop/
 echo "Launching APP!"
