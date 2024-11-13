@@ -6,6 +6,7 @@ echo "########################################################################"
 # Save the opening directory as the project_file_path
 project_file_path=$(pwd)
 repo_file_name="btc_piDisplay"
+program_name="piDisplay.py"
 btc_venv="bitcoin_env/bin/activate"
 
 sudo apt-get update # Update package lists
@@ -37,7 +38,8 @@ if [ "${user_input^^}" = "Y" ]; then
 source $project_file_path/$btc_venv # This should point to the virtual environment of the repository.
 
 # Run the Python script
-python3 $project_file_path/piDisplay.py # This should point to the .py for the program.
+# nohup python3 $project_file_path/$program_name > /home/$USER/Desktop/bitcoin_display.log 2>&1 & # Launch app with nohop so you can close the terminal. May not need this. Delete.
+python3 $project_file_path/$program_name
 
 EOF
     chmod +x "Test Run Display.sh"
@@ -69,4 +71,6 @@ echo "Installation complete!"
 cd /home/$USER/Desktop/
 echo "Launching APP!"
 printf '%.3s' "..." # echo three . to create space
-"./Test Run Display.sh" # Update to Run Display.sh
+nohup "./Test Run Display.sh" > /home/$USER/Desktop/bitcoin_display.log 2>&1 & # Launch app with nohop so you can close the terminal.# Update to Run Display.sh
+echo "########################################################################"
+echo '********************** DONE ********************************************"
