@@ -51,7 +51,7 @@ done
 # Background change
 read -p "Would you like to update your background to be more representative of a bitcoin node? (Y/N): " user_input
 if [ "${user_input^^}" = "Y" ]; then
-    feh --bg-scale /$project_file_path/$repo_file_name/bitcoin_block.jpg
+    feh --bg-scale $project_file_path/bitcoin_block.jpg
 fi
 echo "########################################################################"
 for i in {1..2}; do # Sleep for 2 seconds.
@@ -88,4 +88,3 @@ done
 nohup "./Run Display.sh" > /home/$USER/Desktop/bitcoin_display.log 2>&1 & # Launch app with nohop so you can close the terminal.# Update to Run Display.sh
 
 echo "########################################################################"
-echo "********************** DONE ********************************************"
