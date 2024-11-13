@@ -6,7 +6,7 @@ echo "########################################################################"
 # Save the opening directory as the project_file_path
 project_file_path=$(pwd)
 repo_file_name="btc_piDisplay"
-btc_venv = bitcoin_env/bin/activate
+btc_venv="bitcoin_env/bin/activate"
 
 sudo apt-get update # Update package lists
 sudo apt-get install -y git python3-venv # Install dependencies
