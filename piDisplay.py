@@ -30,7 +30,7 @@ rpc_user = rpc_settings['rpc_user']
 rpc_host = rpc_settings['rpc_host']
 rpc_password = rpc_settings['rpc_password']
 rpc_port = rpc_settings['rpc_port']
-
+time_series = config['time_series']
 CACHE_FILE = config['cache_file']
 testing = config['testing']
 
@@ -183,8 +183,8 @@ def update_price_chart():
                 if daily_change >= 0: #TODO: Find a way to make the "+{daily_change} a different color than the title."
                     ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: +{daily_change}%", color='green', loc='left', fontsize=16)
                 else:
-                    ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: -{daily_change}%", color='red', loc='left', fontsize=16)
-                ax.set_xlabel("Time", color='white')
+                    ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: -{abs(daily_change)}%", color='red', loc='left', fontsize=16)
+                # ax.set_xlabel("Time", color='white') # Do we really need this?
                 # ax.set_ylabel("Price (USD)", color='white')
                 # Change axis colors to white
                 ax.spines['top'].set_color('white')
@@ -194,7 +194,10 @@ def update_price_chart():
                 # Change tick parameters
                 ax.tick_params(axis='x', colors='white')  # X-axis ticks
                 ax.tick_params(axis='y', colors='white')  # Y-axis ticks
-                ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+                if time_series.lower() == "standard": # if time_series is set to standard
+                    ax.xaxis.set_major_formatter(mdates.DateFormatter('%-I:%M %p'))
+                else: # Otherwise, any other string returns military/Zulu.
+                    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
                 plt.xticks(rotation=45)
                 # Define the currency formatter
                 currency_formatter = mticker.FuncFormatter(lambda x, _: f'${x:,.0f}')
@@ -369,9 +372,11 @@ def create_display():
     root.grid_rowconfigure(1, weight=1)
     
     root.bind('<Escape>', on_escape) # this line binds the Escape key
-    exit_button = tk.Button(root, text="Exit", command=root.quit, bg='red', fg='white') # Add this line to create an exit button on touch screen
-    exit_button.place(relx=1.0, rely=0.0, anchor='ne')  # Place in top-right corner
-    # Variables for long press detection
+    exit_button = tk.Button(root, text="Exit", command=root.quit, 
+                        bg='#202222', fg='white',
+                        bd=0, highlightthickness=0,
+                        activebackground='#202222', activeforeground='red')
+    exit_button.place(relx=1.0, rely=0.01, anchor='ne')  # Place in top-right corner# Variables for long press detection
     press_start_time = [None]
     long_press_duration = 2  # seconds
 
@@ -410,4 +415,5 @@ def create_display():
 
 # Create and run the display
 root = create_display()
+root.config(cursor="none")
 root.mainloop()
