@@ -26,6 +26,11 @@ pip install -r requirements.txt
 echo "Requirements installed... Exiting venv."
 deactivate
 
+echo "########################################################################"
+for i in {1..2}; do # Sleep for 2 seconds.
+    echo "."
+    sleep 1 # echo three . to create space
+done
 # Create executable sh on Desktop
 read -p "Would you like to create a desktop icon to run your script? (Y/N): " user_input
 if [ "${user_input^^}" = "Y" ]; then
