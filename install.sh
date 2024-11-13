@@ -10,7 +10,7 @@ program_name="piDisplay.py"
 btc_venv="bitcoin_env/bin/activate"
 
 sudo apt-get update # Update package lists
-sudo apt-get install -y git python3-venv # Install dependencies
+sudo apt-get install -y git python3-venv feh # Install dependencies
 
 echo "########################################################################"
 echo "Creating virtual environment..."
@@ -85,7 +85,7 @@ for i in {1..3}; do # Sleep for 3 seconds.
     echo "."
     sleep 1 # echo three . to create space
 done
-nohup "./Test Run Display.sh" > /home/$USER/Desktop/bitcoin_display.log 2>&1 & # Launch app with nohop so you can close the terminal.# Update to Run Display.sh
+nohup "./Run Display.sh" > /home/$USER/Desktop/bitcoin_display.log 2>&1 & # Launch app with nohop so you can close the terminal.# Update to Run Display.sh
 
 echo "########################################################################"
 echo "********************** DONE ********************************************"
