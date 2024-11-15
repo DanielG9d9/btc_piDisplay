@@ -74,6 +74,10 @@ def on_escape(event):
     root.quit()
 def get_timestamp():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+def time_until_next_hour():
+    now = datetime.now()
+    next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+    return (next_hour - now).total_seconds()
 def get_fee_estimates(rpc_connection):
     try:
         # Get fee estimates for 1, 6, and 144 blocks (high, medium, low priority)
@@ -144,7 +148,7 @@ def get_bitcoin_price():
 def update_price_chart(force_update=False):
     global last_price_update, fig, canvas, ax
     current_time = time.time()
-    if force_update or (current_time - last_price_update >= config['update_intervals']['price']):  # Update every hour # This is in seconds # Change to 3600 for 1 hour
+    if force_update or last_price_update == 0 or (current_time - last_price_update >= config['update_intervals']['price']):  # Update every hour # This is in seconds # Change to 3600 for 1 hour
         try:
             current_price, daily_change, prices = get_bitcoin_price()
             if prices:
@@ -182,10 +186,17 @@ def update_price_chart(force_update=False):
                 fig.tight_layout() # Increased padding for X axis
                 # fig.tight_layout(rect=[0, 0.03, 1, 0.95])
                 canvas.draw()
-            last_price_update = current_time
+                last_price_update = current_time
+                
+                next_update_time = time_until_next_hour() # Schedule the next update at the top of the next hour
+                root.after(int(next_update_time * 1000), update_price_chart)
+            else:
+                # If we couldn't get prices, try again in 5 minutes
+                root.after(300000, update_price_chart)
         except Exception as e:
-            print(f"Error updating price chart: {e}")
             logging.error(f"Error updating price chart: {e}")
+             # If there's an error, try again in 5 minutes
+            # root.after(300000, update_price_chart) # IDK if I want to stall here and wait for price.
 def get_node_info(rpc_connection):
     try:
         blockchain_info = rpc_connection.getblockchaininfo()

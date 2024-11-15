@@ -1,4 +1,4 @@
-# Bitcoin Node Display
+# Bitcoin Node Display (piDisplay)
 
 This project is intended to easily give Bitcoin node runners a display for their nodes. You can create a brandnew raspberry pi configuration and connect to an existing node via RPC or run the display on top of your current node!
 
@@ -9,7 +9,7 @@ My build consists of a raspberry pi 4 (8gb), 1 TB HHD, and a 5" display from [Am
 
 - [Features](#features)
 - [Pre-requisites](#pre-requisites)
-- [Installation](#install)
+- [Installing piDisplay](#Installing-piDisplay)
 - [Manual Start](#manually-starting-the-program)
 - [Debug / Testing](#debug--testing)
 <!-- - [Usage](#usage)
@@ -53,7 +53,7 @@ Follow these steps if you're trying to run a new Pi Display. You can copy / past
 6. Confirm settings and write to the SD card.
 7. Boot the Pi with the SD card and ensure you have WiFi.
 
-## Install Display
+## Install piDisplay
 
 Follow these steps to install and set up the project:
 1. Navigate to where the repository will live.
