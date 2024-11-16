@@ -169,10 +169,10 @@ def update_price_chart(force_update=False):
                 # ax.set_ylabel("Price (USD)", color='white') # Leaving incase someone does!
                 
                 # Add timestamp
-                #TODO If statement to catch config file for how to display time
+                #TODO Standard is not working.
                 if time_series.lower() == "standard":
-                    # timestamp = datetime.now().strftime('%-I:%M %p')
-                    timestamp = datetime.now().strftime('%#I:%M %p')
+                    timestamp = datetime.now().strftime('%-I:%M %p')
+                    # timestamp = datetime.now().strftime('%#I:%M %p')
                 else:
                     timestamp = datetime.now().strftime("%m/%d/%Y - %H:%M")
 
