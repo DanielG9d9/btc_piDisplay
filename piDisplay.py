@@ -16,9 +16,11 @@ import matplotlib.ticker as mticker
 import numpy as np
 from matplotlib.offsetbox import AnchoredOffsetbox, TextArea, VPacker, HPacker
 import json
+from matplotlib.offsetbox import AnchoredText
 
 # Load configuration
-with open('/home/satoshi/Documents/btc_piDisplay/config.json', 'r') as config_file: # Not working!
+with open('/home/satoshi/Documents/btc_piDisplay/config.json', 'r') as config_file: # Should be enabled for Pi Display.
+# with open('C:/dev/repository/btc_piDisplay/config.json', 'r') as config_file: # For testing from desktop # Customize to your own repository config location.
     config = json.load(config_file)
 
 # Use configuration values
@@ -32,9 +34,12 @@ time_series = config['time_series']
 CACHE_FILE = config['cache_file']
 testing = config['testing']
 
+
+
 # Set up logging
+log_file = config['testing_log_file'] if testing else config['log_file']
 logging.basicConfig(
-    filename=config['log_file'],
+    filename=log_file,
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
@@ -165,6 +170,12 @@ def update_price_chart(force_update=False):
                     ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: -{abs(daily_change)}%", color='red', loc='left', fontsize=16)
                 # ax.set_xlabel("Time", color='white') # Do we really need this?
                 # ax.set_ylabel("Price (USD)", color='white') # Leaving incase someone does!
+                
+                # Add timestamp
+                timestamp = datetime.now().strftime("%m/%d/%Y @ %H:%M")
+                anchored_time = AnchoredText(timestamp, loc=1, prop=dict(color='white', size=10), frameon=False)
+                ax.add_artist(anchored_time)
+
                 # Change axis colors to white
                 ax.spines['top'].set_color('white')
                 ax.spines['bottom'].set_color('white')
