@@ -16,8 +16,8 @@ import time
 import os
 
 # Load configuration
-with open('/home/satoshi/Documents/btc_piDisplay/config.json', 'r') as config_file: # Should be enabled for Pi Display.
-# with open('C:/dev/repository/btc_piDisplay/config.json', 'r') as config_file: # For testing from desktop # Customize to your own repository config location.
+# with open('/home/satoshi/Documents/btc_piDisplay/config.json', 'r') as config_file: # Should be enabled for Pi Display.
+with open('C:/dev/repository/btc_piDisplay/config.json', 'r') as config_file: # For testing from desktop # Customize to your own repository config location.
     config = json.load(config_file)
 
 # Use configuration values
@@ -57,6 +57,8 @@ node_connections = ""
 cpu_temp = ""
 ax = None
 saved_timestamp = ""
+global root
+root = None
 
 rpc_connection = AuthServiceProxy(f"http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}", timeout=30)
 
@@ -169,9 +171,10 @@ def update_price_chart(force_update=False):
                 # Add timestamp
                 #TODO If statement to catch config file for how to display time
                 if time_series.lower() == "standard":
-                    timestamp = datetime.now().strftime('%-I:%M %p')
+                    # timestamp = datetime.now().strftime('%-I:%M %p')
+                    timestamp = datetime.now().strftime('%#I:%M %p')
                 else:
-                    timestamp = datetime.now().strftime("%m/%d/%Y @ %H:%M")
+                    timestamp = datetime.now().strftime("%m/%d/%Y - %H:%M")
 
                 anchored_time = AnchoredText(timestamp, loc=2, prop=dict(color='white', size=10), frameon=False)
                 ax.add_artist(anchored_time)
@@ -306,7 +309,7 @@ def update_node_table(blockchain_data, network_data, fees):
     return  
 
 def update_blockchain_info(force_update=False):
-    global last_blockchain_update, blockchain_chain, blockchain_blocks, blockchain_verification_progress, node_connections, cpu_temp, previous_chain, previous_network, previous_fees, saved_timestamp
+    global root, last_blockchain_update, blockchain_chain, blockchain_blocks, blockchain_verification_progress, node_connections, cpu_temp, previous_chain, previous_network, previous_fees, saved_timestamp
     # Trying to pass in blockchain and network info to this update function.
     current_time = time.time()
     if force_update or (current_time - last_blockchain_update >= config['update_intervals']['blockchain']): # 600 seconds = 10 minutes
@@ -342,7 +345,7 @@ def format_difficulty(difficulty):
         return f"{difficulty:,.2f}"
 
 def create_display():
-    global last_price_update, fig, canvas
+    global root, last_price_update, fig, canvas
     root = tk.Tk()
     root.title("Bitcoin Node Information")
     # Fullscreen this bish
@@ -398,7 +401,6 @@ def create_display():
     update_display()
     return root
 
-display_error = "no display name"
 # Create and run the display
 try:
     root = create_display() # Initial call

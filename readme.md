@@ -84,6 +84,8 @@ You can also start the display remotely from your terminal via ssh!
     source bitcoin_env/bin/activate # Launch the bitcoin_env virtual environment.
 3. Run the script from the virtual environment.  
     ```bash
-    nohup python3 piDisplay.py # Use nohup to ensure the script does not stop when you close the terminal.
+    nohup "/.Run Display.sh" /home/$USER/Desktop/bitcoin_display.log 2>&1 & # Use nohup to ensure the script does not stop when you close the terminal.
 ## Debug & Testing
 If you encounter errors an output log should be created at the location specified in the config file. By default it is set as `"log_file": "/home/$USER/Desktop/bitcoin_display.log"` and should be updated to your custom path when setting other config parameters. More specifically, $USER should be changed to your profile name. If you don't know what your profile name is run the command `whoami` in the terminal of the raspberry pi.
+
+Need to kill the app from terminal? Use `pkill -f piDisplay.py`
