@@ -19,8 +19,8 @@ import json
 from matplotlib.offsetbox import AnchoredText
 
 # Load configuration
-# with open('/home/satoshi/Documents/btc_piDisplay/config.json', 'r') as config_file: # Should be enabled for Pi Display.
-with open('C:/dev/repository/btc_piDisplay/config.json', 'r') as config_file: # For testing from desktop # Customize to your own repository config location.
+with open('/home/satoshi/Documents/btc_piDisplay/config.json', 'r') as config_file: # Should be enabled for Pi Display.
+# with open('C:/dev/repository/btc_piDisplay/config.json', 'r') as config_file: # For testing from desktop # Customize to your own repository config location.
     config = json.load(config_file)
 
 # Use configuration values
