@@ -47,22 +47,7 @@ python3 $project_file_path/$program_name
 EOF
     chmod +x "Run Display.sh"
 fi
-# echo "########################################################################"
-# # Any additional setup steps
-# for i in {1..2}; do # Sleep for 2 seconds.
-#     echo "."
-#     sleep 1 # echo three . to create space
-# done
-# Background change
-# read -p "Would you like to update your background to be more representative of a bitcoin node? (Y/N): " user_input
-# if [ "${user_input^^}" = "Y" ]; then
-#     feh --bg-scale $project_file_path/bitcoin_block.jpg
-# fi
-# echo "########################################################################"
-# for i in {1..2}; do # Sleep for 2 seconds.
-#     echo "."
-#     sleep 1 # echo three . to create space
-# done
+
 echo "You will need to update the config file with your RPC node connection as well as the desired update intervals..."
 read -p "Would you like to do that now? (Y/N): " user_input
 if [ "${user_input^^}" = "Y" ]; then
