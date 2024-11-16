@@ -19,8 +19,8 @@ import json
 from matplotlib.offsetbox import AnchoredText
 
 # Load configuration
-with open('/home/satoshi/Documents/btc_piDisplay/config.json', 'r') as config_file: # Should be enabled for Pi Display.
-# with open('C:/dev/repository/btc_piDisplay/config.json', 'r') as config_file: # For testing from desktop # Customize to your own repository config location.
+# with open('/home/satoshi/Documents/btc_piDisplay/config.json', 'r') as config_file: # Should be enabled for Pi Display.
+with open('C:/dev/repository/btc_piDisplay/config.json', 'r') as config_file: # For testing from desktop # Customize to your own repository config location.
     config = json.load(config_file)
 
 # Use configuration values
@@ -173,7 +173,7 @@ def update_price_chart(force_update=False):
                 
                 # Add timestamp
                 timestamp = datetime.now().strftime("%m/%d/%Y @ %H:%M")
-                anchored_time = AnchoredText(timestamp, loc=1, prop=dict(color='white', size=10), frameon=False)
+                anchored_time = AnchoredText(timestamp, loc=2, prop=dict(color='white', size=10), frameon=False)
                 ax.add_artist(anchored_time)
 
                 # Change axis colors to white

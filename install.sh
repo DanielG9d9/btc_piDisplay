@@ -26,11 +26,11 @@ pip install -r requirements.txt
 echo "Requirements installed... Exiting venv."
 deactivate
 
-echo "########################################################################"
-for i in {1..2}; do # Sleep for 2 seconds.
-    echo "."
-    sleep 1 # echo three . to create space
-done
+# echo "########################################################################"
+# for i in {1..2}; do # Sleep for 2 seconds.
+#     echo "."
+#     sleep 1 # echo three . to create space
+# done
 # Create executable sh on Desktop
 read -p "Would you like to create a desktop icon to run your script? (Y/N): " user_input
 if [ "${user_input^^}" = "Y" ]; then
@@ -47,22 +47,22 @@ python3 $project_file_path/$program_name
 EOF
     chmod +x "Run Display.sh"
 fi
-echo "########################################################################"
-# Any additional setup steps
-for i in {1..2}; do # Sleep for 2 seconds.
-    echo "."
-    sleep 1 # echo three . to create space
-done
+# echo "########################################################################"
+# # Any additional setup steps
+# for i in {1..2}; do # Sleep for 2 seconds.
+#     echo "."
+#     sleep 1 # echo three . to create space
+# done
 # Background change
-read -p "Would you like to update your background to be more representative of a bitcoin node? (Y/N): " user_input
-if [ "${user_input^^}" = "Y" ]; then
-    feh --bg-scale $project_file_path/bitcoin_block.jpg
-fi
-echo "########################################################################"
-for i in {1..2}; do # Sleep for 2 seconds.
-    echo "."
-    sleep 1 # echo three . to create space
-done
+# read -p "Would you like to update your background to be more representative of a bitcoin node? (Y/N): " user_input
+# if [ "${user_input^^}" = "Y" ]; then
+#     feh --bg-scale $project_file_path/bitcoin_block.jpg
+# fi
+# echo "########################################################################"
+# for i in {1..2}; do # Sleep for 2 seconds.
+#     echo "."
+#     sleep 1 # echo three . to create space
+# done
 echo "You will need to update the config file with your RPC node connection as well as the desired update intervals..."
 read -p "Would you like to do that now? (Y/N): " user_input
 if [ "${user_input^^}" = "Y" ]; then
@@ -72,7 +72,7 @@ if [ "${user_input^^}" = "Y" ]; then
     echo "Next, update the 'connect_to' variable to the name you used in rpc_settings."
     echo "'update_intervals' should be updated with SECONDS between refreshes. Example: 60 = refresh every 60 seconds."
     printf "Update log_file path with your name ($USER) if not satoshi."
-    echo "Use CTRL+x to save your updates."
+    echo " Use CTRL+x to save your updates."
     echo "Opening in 10 seconds..."
     sleep 10
     cd $project_file_path/ # Navigate to the project root folder
