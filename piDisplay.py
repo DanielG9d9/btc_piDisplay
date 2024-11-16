@@ -1,22 +1,19 @@
-from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
-from datetime import datetime, timedelta
-import requests
-import tkinter as tk
-from tkinter import ttk
-import os
-import matplotlib.pyplot as plt
+from matplotlib.offsetbox import AnchoredOffsetbox, TextArea, VPacker, HPacker
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from bitcoinrpc.authproxy import AuthServiceProxy
+from matplotlib.offsetbox import AnchoredText
+from datetime import datetime, timedelta
+import matplotlib.ticker as mticker
 import matplotlib.dates as mdates
-from matplotlib.lines import Line2D
-import time
+import matplotlib.pyplot as plt
 from datetime import datetime
+from tkinter import ttk
+import tkinter as tk
+import requests
 import logging
 import json
-import matplotlib.ticker as mticker
-import numpy as np
-from matplotlib.offsetbox import AnchoredOffsetbox, TextArea, VPacker, HPacker
-import json
-from matplotlib.offsetbox import AnchoredText
+import time
+import os
 
 # Load configuration
 with open('/home/satoshi/Documents/btc_piDisplay/config.json', 'r') as config_file: # Should be enabled for Pi Display.
@@ -33,8 +30,6 @@ rpc_port = rpc_settings['rpc_port']
 time_series = config['time_series']
 CACHE_FILE = config['cache_file']
 testing = config['testing']
-
-
 
 # Set up logging
 log_file = config['testing_log_file'] if testing else config['log_file']
@@ -156,7 +151,7 @@ def update_price_chart(force_update=False):
     if force_update or last_price_update == 0 or (current_time - last_price_update >= config['update_intervals']['price']):  # Update every hour # This is in seconds # Change to 3600 for 1 hour
         try:
             current_price, daily_change, prices = get_bitcoin_price()
-            if prices:
+            if prices: # If we have price data
                 fig.clear()
                 ax = fig.add_subplot(111)
                 ax.set_facecolor('#202222') # Set the background color # Light gray background
@@ -164,7 +159,7 @@ def update_price_chart(force_update=False):
                 values = [price[1] for price in prices]
                 ax.plot(dates, values, color='orange') # Color of plt line (price)
                 fig.patch.set_facecolor('#191A1A')  # Slightly darker gray for figure background
-                if daily_change >= 0: #TODO: Find a way to make the "+{daily_change} a different color than the title."
+                if daily_change >= 0:
                     ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: +{daily_change}%", color='green', loc='left', fontsize=16)
                 else:
                     ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: -{abs(daily_change)}%", color='red', loc='left', fontsize=16)
@@ -172,7 +167,12 @@ def update_price_chart(force_update=False):
                 # ax.set_ylabel("Price (USD)", color='white') # Leaving incase someone does!
                 
                 # Add timestamp
-                timestamp = datetime.now().strftime("%m/%d/%Y @ %H:%M")
+                #TODO If statement to catch config file for how to display time
+                if time_series.lower() == "standard":
+                    timestamp = datetime.now().strftime('%-I:%M %p')
+                else:
+                    timestamp = datetime.now().strftime("%m/%d/%Y @ %H:%M")
+
                 anchored_time = AnchoredText(timestamp, loc=2, prop=dict(color='white', size=10), frameon=False)
                 ax.add_artist(anchored_time)
 
@@ -181,6 +181,7 @@ def update_price_chart(force_update=False):
                 ax.spines['bottom'].set_color('white')
                 ax.spines['left'].set_color('white')
                 ax.spines['right'].set_color('white')
+                
                 # Change tick parameters
                 ax.tick_params(axis='x', colors='white')  # X-axis ticks
                 ax.tick_params(axis='y', colors='white')  # Y-axis ticks
@@ -191,12 +192,12 @@ def update_price_chart(force_update=False):
                 
                 # Define the currency formatter
                 currency_formatter = mticker.FuncFormatter(lambda x, _: f'${x:,.0f}')
-
-                # Set the y-axis major formatter
-                ax.yaxis.set_major_formatter(currency_formatter)
+                ax.yaxis.set_major_formatter(currency_formatter) # Set the y-axis major formatter
+                
                 fig.tight_layout() # Increased padding for X axis
                 # fig.tight_layout(rect=[0, 0.03, 1, 0.95])
                 canvas.draw()
+                
                 last_price_update = current_time
                 
                 next_update_time = time_until_next_hour() # Schedule the next update at the top of the next hour
@@ -207,7 +208,7 @@ def update_price_chart(force_update=False):
         except Exception as e:
             logging.error(f"Error updating price chart: {e}")
              # If there's an error, try again in 5 minutes
-            # root.after(300000, update_price_chart) # IDK if I want to stall here and wait for price.
+            root.after(300000, update_price_chart) # IDK if I want to stall here and wait for price.
 def get_node_info(rpc_connection):
     try:
         blockchain_info = rpc_connection.getblockchaininfo()

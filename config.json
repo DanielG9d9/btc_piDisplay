@@ -19,8 +19,8 @@
             "rpc_port": "8332" 
         }
     },
-    "connect_to": "parmanode",
-    "time_series": "military",
+    "connect_to": "raspiblitz",
+    "time_series": "standard",
     "update_intervals": {
         "__comment": "These are in seconds",
         "price": 3600,
@@ -28,6 +28,6 @@
     },
     "cache_file": "bitcoin_price_cache.json",
     "log_file": "/home/satoshi/Desktop/bitcoin_display.log",
-    "testing_log_file":"C:/dev/repository/btc_piDisplay",
+    "testing_log_file":"C:/dev/repository/btc_piDisplay/bitcoin_display.log",
     "testing": false
 }
