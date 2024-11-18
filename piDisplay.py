@@ -16,8 +16,8 @@ import time
 import os
 
 # Load configuration
-with open('/home/satoshi/Documents/btc_piDisplay/config.json', 'r') as config_file: # Should be enabled for Pi Display.
-# with open('C:/dev/repository/btc_piDisplay/config.json', 'r') as config_file: # For testing from desktop # Customize to your own repository config location.
+# with open('/home/satoshi/Documents/btc_piDisplay/config.json', 'r') as config_file: # Should be enabled for Pi Display.
+with open('C:/dev/repository/btc_piDisplay/config.json', 'r') as config_file: # For testing from desktop # Customize to your own repository config location.
     config = json.load(config_file)
 
 # Use configuration values
@@ -150,8 +150,8 @@ def get_bitcoin_price():
 def update_price_chart(force_update=False):
     global last_price_update, fig, canvas, ax
     current_time = time.time()
-    if force_update or last_price_update == 0 or (current_time - last_price_update >= config['update_intervals']['price']):  # Update every hour # This is in seconds # Change to 3600 for 1 hour
-        try:
+    if force_update or last_price_update == 0 or (current_time - last_price_update >= config['update_intervals']['price']): # If it's a force update, hasn't been updated, or the interval time has been met.
+        try: 
             current_price, daily_change, prices = get_bitcoin_price()
             if prices: # If we have price data
                 fig.clear()
@@ -201,17 +201,28 @@ def update_price_chart(force_update=False):
                 # fig.tight_layout(rect=[0, 0.03, 1, 0.95])
                 canvas.draw()
                 
+                # This is overwriting the interval setting for updates. Need to update every hour or on the interval, whichever is smallest.
                 last_price_update = current_time
-                
                 next_update_time = time_until_next_hour() # Schedule the next update at the top of the next hour
-                root.after(int(next_update_time * 1000), update_price_chart)
+                config['update_intervals']['price']
+                
+                # Logic tests
+                # print(f"Next update time: {next_update_time * 1000} milliseconds!")
+                # print(f"config update time: {config['update_intervals']['price'] * 1000} milliseconds!")
+                # if next_update_time * 1000 < config['update_intervals']['price'] * 1000:
+                #     print("Update at the next rounded hour")
+                # else:
+                #     print("Update at the interval setting!")
+                root.after(min(next_update_time * 1000, config['update_intervals']['price']) * 1000, update_price_chart)  # Schedule next price update from min value of intervals
+
+                # root.after(int(next_update_time * 1000 ), update_price_chart) # Multiply next_update_time(seconds) by 1000 to convert to milliseconds. 
             else:
                 # If we couldn't get prices, try again in 5 minutes
                 root.after(300000, update_price_chart)
         except Exception as e:
             logging.error(f"Error updating price chart: {e}")
              # If there's an error, try again in 5 minutes
-            root.after(300000, update_price_chart) # IDK if I want to stall here and wait for price.
+            root.after(300000, update_price_chart)
 def get_node_info(rpc_connection):
     try:
         blockchain_info = rpc_connection.getblockchaininfo()
@@ -237,7 +248,7 @@ def update_node_table(blockchain_data, network_data, fees):
     difficulty = blockchain_data['difficulty']
     formatted_difficulty = format_difficulty(difficulty)
     
-    if connect_to == 'raspiblitz':
+    if connect_to == 'raspiblitz': # This does nothing, can be changed when running on desktop as you can't fetch the cpu temp with this...
         # Do nothing
         # print("Changed this cuz I'm on Pi.")
         cpu_temp = get_cpu_temp()
@@ -349,8 +360,8 @@ def create_display():
     root = tk.Tk()
     root.title("Bitcoin Node Information")
     # Fullscreen this bish
-    root.overrideredirect(True)
-    root.geometry("{0}x{1}+0+0".format(root.winfo_screenwidth(), root.winfo_screenheight())) # WTF?
+    # root.overrideredirect(True)
+    # root.geometry("{0}x{1}+0+0".format(root.winfo_screenwidth(), root.winfo_screenheight())) # WTF?
     root.focus_set()  # <-- move focus to this widget
 
     #Configure grid
@@ -398,13 +409,15 @@ def create_display():
         exit_button.lift()  # Ensure the exit button stays on top
         update_blockchain_info()
         root.after(min(config['update_intervals']['price'], config['update_intervals']['blockchain']) * 1000, update_display)  # Schedule next price update from min value of intervals
-    update_display()
+    # update_display()
     return root
 
 # Create and run the display
 try:
     root = create_display() # Initial call
     root.config(cursor="none") # Get rid of that blasted cursor!
+    update_price_chart()
+    update_blockchain_info()
     root.mainloop()
 except tk.TclError as e: # Catch when DISPLAY is not setup correctly.
     logging.error(f"An error occured while creating the display. {e} \n Normally this can be fixed by adding 'DISPLAY=:0.0' to bitcoin_env/bin/activate line 38. ")
