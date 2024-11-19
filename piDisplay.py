@@ -385,6 +385,7 @@ def create_display():
             press_duration = time.time() - press_start_time[0]
             if press_duration >= long_press_duration:
                 create_display()
+                root.config(cursor="none") # Get rid of that blasted cursor!
                 update_price_chart(force_update=True)
                 update_blockchain_info(force_update=True)
         press_start_time[0] = None
