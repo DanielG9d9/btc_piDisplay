@@ -175,8 +175,22 @@ def update_price_chart(force_update=False):
                     # timestamp = datetime.now().strftime('%#I:%M %p')
                 else:
                     timestamp = datetime.now().strftime("%m/%d/%Y - %H:%M") 
+                # anchored_time = AnchoredText(timestamp, loc=2, prop=dict(color='white', size=10), frameon=False)
+                # ax.add_artist(anchored_time) # Moving below so I can use one single legend
 
-                anchored_time = AnchoredText(timestamp, loc=2, prop=dict(color='white', size=10), frameon=False)
+                # Getting price values
+                price_values = [price[1] for price in prices]
+                high_price, low_price = max(price_values), min(price_values)
+                formatted_high_price, formatted_low_price = "${:,.0f}".format(high_price), "${:,.0f}".format(low_price)
+        
+                # Add labels for high and low prices
+                plt.plot([], [], label=f'24H High: {formatted_high_price}', linestyle='None', marker='None')
+                plt.plot([], [], label=f'24H Low: {formatted_low_price}', linestyle='None', marker='None')
+                # Add the legend outside the plot at the bottom
+                plt.legend(loc='best', ncol=2)
+
+                text = f"{timestamp}\n24H High: {formatted_high_price}\n24H Low: {formatted_low_price}"
+                anchored_time = AnchoredText(text, loc=2, prop=dict(color='white', size=10), frameon=False)
                 ax.add_artist(anchored_time)
 
                 # Change axis colors to white
@@ -359,7 +373,7 @@ def create_display():
     global root, last_price_update, fig, canvas
     root = tk.Tk()
     root.title("Bitcoin Node Information")
-    # Fullscreen this bish
+    # Fullscreen this bish # Testing
     # root.overrideredirect(True)
     # root.geometry("{0}x{1}+0+0".format(root.winfo_screenwidth(), root.winfo_screenheight())) # WTF?
     root.focus_set()  # <-- move focus to this widget
