@@ -60,6 +60,14 @@ saved_timestamp = ""
 global root
 root = None
 
+def create_display():
+    global root
+    if root is None:
+        root = tk.Tk()
+        root.config(cursor="none")
+        # Other initialization code here
+    return root
+
 rpc_connection = AuthServiceProxy(f"http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}", timeout=30)
 
 logging.basicConfig(
@@ -374,8 +382,8 @@ def create_display():
     root = tk.Tk()
     root.title("Bitcoin Node Information")
     # Fullscreen this bish # Testing
-    # root.overrideredirect(True)
-    # root.geometry("{0}x{1}+0+0".format(root.winfo_screenwidth(), root.winfo_screenheight())) # WTF?
+    root.overrideredirect(True)
+    root.geometry("{0}x{1}+0+0".format(root.winfo_screenwidth(), root.winfo_screenheight())) # WTF?
     root.focus_set()  # <-- move focus to this widget
 
     #Configure grid
@@ -398,8 +406,8 @@ def create_display():
         if press_start_time[0] is not None:
             press_duration = time.time() - press_start_time[0]
             if press_duration >= long_press_duration:
-                create_display()
-                root.config(cursor="none") # Get rid of that blasted cursor!
+                # create_display()
+                # root.config(cursor="none") # Get rid of that blasted cursor!
                 update_price_chart(force_update=True)
                 update_blockchain_info(force_update=True)
         press_start_time[0] = None
@@ -440,3 +448,21 @@ except KeyboardInterrupt as e: # Catch when user interupts program.
     logging.error(f"User interupted program. {e}. Are you trying to start remotely? Use 'nohup' before running. 'nohup python3 piDisplay.py'")
 except Exception as e: # Catch all other errors here.
     logging.error(f"An error occurred when initializing the app. {e}")
+
+def main():
+    global root, fig, canvas, ax
+    root = create_display()
+    fig = plt.Figure(figsize=(10, 6), dpi=100)
+    ax = fig.add_subplot(111)
+    canvas = FigureCanvasTkAgg(fig, master=root)
+    canvas.draw()
+    canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+    # Bind the long press event to the root window
+    root.bind("<Key>", on_long_press)
+    
+    update_price_chart()
+    update_blockchain_info()
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
