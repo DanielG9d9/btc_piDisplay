@@ -15,7 +15,7 @@ import json
 import time
 import os
 
-# Load configuration
+# Load configuration - Desktop
 with open('/home/satoshi/Documents/btc_piDisplay/config.json', 'r') as config_file: # Should be enabled for Pi Display.
 # with open('C:/dev/repository/btc_piDisplay/config.json', 'r') as config_file: # For testing from desktop # Customize to your own repository config location.
     config = json.load(config_file)
@@ -426,7 +426,9 @@ def create_display():
     canvas = FigureCanvasTkAgg(fig, master=chart_frame)
     canvas.draw()
     canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
-    
+
+    exit_button.lift()  # Ensure the exit button stays on top
+
     def update_display():
         update_price_chart()
         exit_button.lift()  # Ensure the exit button stays on top
