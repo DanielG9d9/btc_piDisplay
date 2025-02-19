@@ -46,7 +46,7 @@ python3 $project_file_path/$program_name
 
 EOF
     chmod +x "Run Display.sh"
-fi
+# fi
 
 echo "You will need to update the config file with your RPC node connection as well as the desired update intervals..."
 read -p "Would you like to do that now? (Y/N): " user_input
