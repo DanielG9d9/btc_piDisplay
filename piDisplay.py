@@ -160,10 +160,23 @@ def on_escape(event):
     root.quit()
 def get_timestamp():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-def time_until_next_hour():
+def time_until_next_even_hour(): # Used for price data when updating hourly (3600 seconds)
     now = datetime.now()
-    next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+    # If past :00 of even hour, go to next even hour
+    next_hour = now.replace(minute=0, second=0, microsecond=0)
+    if now.hour % 2 == 1:  # Odd hour (1pm, 3pm, etc.)
+        next_hour += timedelta(hours=1)
+    # Always target :00 of even hour
     return (next_hour - now).total_seconds()
+def time_until_next_10min(): # Used for blockchain data when updating every 10 minutes (600 seconds)
+    now = datetime.now()
+    minutes = now.minute
+    next_10min = (minutes // 10 + 1) * 10
+    if next_10min >= 60:
+        next_10min = 0
+        now += timedelta(hours=1)
+    target_time = now.replace(minute=next_10min, second=0, microsecond=0)
+    return (target_time - now).total_seconds()
 def get_fee_estimates(rpc_connection):
     try:
         # Get fee estimates for 1, 6, and 144 blocks (high, medium, low priority)
@@ -301,19 +314,9 @@ def update_price_chart(force_update=False):
                 
                 # This is overwriting the interval setting for updates. Need to update every hour or on the interval, whichever is smallest.
                 last_price_update = current_time
-                next_update_time = time_until_next_hour() # Schedule the next update at the top of the next hour
-                config['update_intervals']['price']
-                
-                # Logic tests
-                # print(f"Next update time: {next_update_time * 1000} milliseconds!")
-                # print(f"config update time: {config['update_intervals']['price'] * 1000} milliseconds!")
-                # if next_update_time * 1000 < config['update_intervals']['price'] * 1000:
-                #     print("Update at the next rounded hour")
-                # else:
-                #     print("Update at the interval setting!")
-                root.after(min(next_update_time * 1000, config['update_intervals']['price']) * 1000, update_price_chart)  # Schedule next price update from min value of intervals
+                next_update_time = time_until_next_even_hour() * 1000 # Schedule the next update at the top of the next hour
+                root.after(next_update_time, update_price_chart)
 
-                # root.after(int(next_update_time * 1000 ), update_price_chart) # Multiply next_update_time(seconds) by 1000 to convert to milliseconds. 
             else:
                 # If we couldn't get prices, try again in 5 minutes
                 root.after(300000, update_price_chart)
@@ -442,6 +445,9 @@ def update_blockchain_info(force_update=False):
                 previous_network = new_network_info     # Update variable with newest data
                 previous_fees = fees
                 last_blockchain_update = current_time   # Update the last update time before exiting udpate function                
+                next_update_time = time_until_next_10min() * 1000  # Next 10-min mark
+                root.after(next_update_time, update_blockchain_info)
+                return  # Exit early after scheduling
             except Exception as e: # Failure of RPC connection here
                     logging.error(f"{get_timestamp()} - Error updating blockchain info: Expected on first try. {e}")
                     try: # Attempt to reconnect
@@ -511,13 +517,18 @@ def create_display():
 
     exit_button.lift()  # Ensure the exit button stays on top
 
+    # def update_display():
+    #     update_price_chart()
+    #     exit_button.lift()  # Ensure the exit button stays on top
+    #     update_blockchain_info()
+    #     root.after(min(config['update_intervals']['price'], config['update_intervals']['blockchain']) * 1000, update_display)  # Schedule next price update from min value of intervals
+    # # update_display()
+    # return root
     def update_display():
-        update_price_chart()
-        exit_button.lift()  # Ensure the exit button stays on top
-        update_blockchain_info()
-        root.after(min(config['update_intervals']['price'], config['update_intervals']['blockchain']) * 1000, update_display)  # Schedule next price update from min value of intervals
-    # update_display()
-    return root
+        update_price_chart()      # Checks its own schedule internally
+        update_blockchain_info()  # Checks its own schedule internally
+        # Main loop runs every 5 minutes to check both
+        root.after(300000, update_display)  # 5 min = 300000 ms
 
 # Create and run the display
 try:
