@@ -9,16 +9,40 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 from tkinter import ttk
 import tkinter as tk
+import subprocess
+import platform
 import requests
+import argparse
 import logging
+import pathlib
 import json
 import time
 import os
 
+IS_PI = platform.machine().startswith("arm") or platform.machine().startswith("aarch")
+# Parse command line args FIRST
+parser = argparse.ArgumentParser(description="Bitcoin Pi Display")
+parser.add_argument('--testing', action='store_true', help='Enable testing mode')
+parser.add_argument('--config', type=str, help='Path to config file')
+args = parser.parse_args()
+
 # Load configuration - Desktop
-with open('/home/satoshi/Documents/btc_piDisplay/config.json', 'r') as config_file: # Should be enabled for Pi Display.
+# with open('/home/satoshi/Documents/btc_piDisplay/config.json', 'r') as config_file: # Should be enabled for Pi Display.
 # with open('C:/dev/repository/btc_piDisplay/config.json', 'r') as config_file: # For testing from desktop # Customize to your own repository config location.
+#     config = json.load(config_file)
+
+# Use CLI --config first, then find config.json, then set defaults
+config_path = args.config or os.environ.get('PIDISPLAY_CONFIG')
+if not config_path:
+    BASE_DIR = pathlib.Path(__file__).resolve().parent
+    config_path = str(BASE_DIR / "config.json")
+
+with open(config_path, 'r') as config_file:
     config = json.load(config_file)
+
+# CLI --testing OVERRIDES config.json
+if args.testing:
+    config['testing'] = True
 
 # Use configuration values
 connect_to = config['connect_to']
@@ -60,12 +84,52 @@ saved_timestamp = ""
 global root
 root = None
 
+# def create_display():
+#     global root
+#     if root is None:
+#         root = tk.Tk()
+#         root.config(cursor="none")
+#         # Other initialization code here
+#     return root
 def create_display():
-    global root
-    if root is None:
-        root = tk.Tk()
+    global root, fig, canvas
+    root = tk.Tk()
+    root.title("Bitcoin Node Information")
+
+    if IS_PI:
+        # Fullscreen for Pi display
+        root.overrideredirect(True)
+        root.geometry("{0}x{1}+0+0".format(
+            root.winfo_screenwidth(), root.winfo_screenheight()
+        ))
         root.config(cursor="none")
-        # Other initialization code here
+    else:
+        # Desktop: normal window, optionally set a reasonable size
+        root.geometry("1024x600")  # or whatever matches your Pi resolution
+    
+    root.focus_set()
+    root.grid_columnconfigure(0, weight=1)
+    root.grid_rowconfigure(1, weight=1)
+
+    root.bind("<Escape>", on_escape)
+
+    exit_button = tk.Button(
+        root, text="Exit", command=root.quit,
+        bg='#202222', fg='white',
+        bd=0, highlightthickness=0,
+        activebackground='#202222', activeforeground='red'
+    )
+    exit_button.place(relx=1.0, rely=0.01, anchor='ne')
+
+    chart_frame = ttk.Frame(root)
+    chart_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+
+    fig = plt.Figure(figsize=(8, 3))
+    canvas = FigureCanvasTkAgg(fig, master=chart_frame)
+    canvas.draw()
+    canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+
+    exit_button.lift()
     return root
 
 rpc_connection = AuthServiceProxy(f"http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}", timeout=30)
@@ -77,9 +141,21 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 # Functions
+# def get_cpu_temp():
+#     temp = os.popen("vcgencmd measure_temp").readline()
+#     return float(temp.replace("temp=","").replace("'C",""))
 def get_cpu_temp():
-    temp = os.popen("vcgencmd measure_temp").readline()
-    return float(temp.replace("temp=","").replace("'C",""))
+    try:
+        # This works on Raspberry Pi
+        out = subprocess.check_output(
+            ["vcgencmd", "measure_temp"],
+            stderr=subprocess.DEVNULL,
+            text=True
+        )
+        return float(out.replace("temp=", "").replace("'C", ""))
+    except Exception:
+        # Non-Pi or vcgencmd unavailable
+        return None
 def on_escape(event):
     root.quit()
 def get_timestamp():
@@ -291,13 +367,19 @@ def update_node_table(blockchain_data, network_data, fees):
         deviceName = TextArea(f"{connect_to}: ", textprops=dict(color='white', fontsize=12))
         chainName  = TextArea(f"{blockchain_chain}net", textprops=dict(color='cyan', fontsize=12))
         cpuTempName= TextArea(f"CPU Temp: ", textprops=dict(color='white', fontsize=12))
-        degree_symbol = "\u00B0"
-        if cpu_temp >= 85:
-            cpuTempNumber = TextArea(f"{cpu_temp}{degree_symbol}C", textprops=dict(color='red', fontsize=12))
-        elif cpu_temp >= 65:
-            cpuTempNumber = TextArea(f"{cpu_temp}{degree_symbol}C", textprops=dict(color='yellow', fontsize=12))
+      
+        if cpu_temp is None:
+            cpuTempNumber = TextArea("N/A", textprops=dict(color='yellow', fontsize=12))
         else:
-            cpuTempNumber = TextArea(f"{cpu_temp}{degree_symbol}C", textprops=dict(color='green', fontsize=12))
+            degree_symbol = "\u00B0"
+            if cpu_temp >= 85:
+                color = 'red'
+            elif cpu_temp >= 65:
+                color = 'yellow'
+            else:
+                color = 'green'
+            cpuTempNumber = TextArea(f"{cpu_temp}{degree_symbol}C", textprops=dict(color=color, fontsize=12))
+    
         blocksName = TextArea("Blocks: ", textprops=dict(color='white', fontsize=12))
         blocksNumber = TextArea(f"{blockchain_blocks}", textprops=dict(color='yellow', fontsize=12))
         syncStatus = TextArea(f"{sync_text}", textprops=dict(color=sync_color, fontsize=12))
@@ -451,20 +533,40 @@ except KeyboardInterrupt as e: # Catch when user interupts program.
 except Exception as e: # Catch all other errors here.
     logging.error(f"An error occurred when initializing the app. {e}")
 
-def main():
-    global root, fig, canvas, ax
-    root = create_display()
-    fig = plt.Figure(figsize=(10, 6), dpi=100)
-    ax = fig.add_subplot(111)
-    canvas = FigureCanvasTkAgg(fig, master=root)
-    canvas.draw()
-    canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
-    # Bind the long press event to the root window
-    root.bind("<Key>", on_long_press)
+# def main():
+#     global root, fig, canvas, ax
+#     root = create_display()
+#     fig = plt.Figure(figsize=(10, 6), dpi=100)
+#     ax = fig.add_subplot(111)
+#     canvas = FigureCanvasTkAgg(fig, master=root)
+#     canvas.draw()
+#     canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+#     # Bind the long press event to the root window
+#     root.bind("<Key>", on_long_press)
     
-    update_price_chart()
-    update_blockchain_info()
-    root.mainloop()
+#     update_price_chart()
+#     update_blockchain_info()
+#     root.mainloop()
+
+# if __name__ == "__main__":
+#     main()
+
+def main():
+    global root
+    try:
+        root = create_display()
+        update_price_chart()
+        update_blockchain_info()
+        root.mainloop()
+    except tk.TclError as e:
+        logging.error(
+            f"An error occurred while creating the display. {e} "
+            "If running headless, ensure DISPLAY is set correctly."
+        )
+    except KeyboardInterrupt as e:
+        logging.error(f"User interrupted program. {e}")
+    except Exception as e:
+        logging.error(f"An error occurred when initializing the app. {e}")
 
 if __name__ == "__main__":
     main()

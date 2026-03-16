@@ -1,5 +1,11 @@
 {
     "rpc_settings": {
+        "NUC1": {
+            "rpc_user": "satoshi",
+            "rpc_host": "192.168.86.53",
+            "rpc_password": "Waffle9d9RPC123PaSSw0rd",
+            "rpc_port": "8332"
+        },
         "raspiblitz": {
             "rpc_user": "raspibolt",
             "rpc_host": "192.168.86.68",
@@ -19,7 +25,7 @@
             "rpc_port": "8332" 
         }
     },
-    "connect_to": "raspiblitz",
+    "connect_to": "NUC1",
     "time_series": "military",
     "update_intervals": {
         "__comment": "These are in seconds",
