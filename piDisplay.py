@@ -84,13 +84,12 @@ saved_timestamp = ""
 global root
 root = None
 
-# def create_display():
-#     global root
-#     if root is None:
-#         root = tk.Tk()
-#         root.config(cursor="none")
-#         # Other initialization code here
-#     return root
+def update_display():
+    update_price_chart()      # Checks its own schedule internally
+    update_blockchain_info()  # Checks its own schedule internally
+    # Main loop runs every 5 minutes to check both
+    root.after(300000, update_display)  # 5 min = 300000 ms
+
 def create_display():
     global root, fig, canvas
     root = tk.Tk()
@@ -120,6 +119,23 @@ def create_display():
         activebackground='#202222', activeforeground='red'
     )
     exit_button.place(relx=1.0, rely=0.01, anchor='ne')
+
+    press_start_time = [None]
+    long_press_duration = 2
+
+    def on_press(event):
+        press_start_time[0] = time.time()
+
+    def on_release(event):
+        if press_start_time[0] is not None:
+            press_duration = time.time() - press_start_time[0]
+            if press_duration >= long_press_duration:
+                update_price_chart(force_update=True)
+                update_blockchain_info(force_update=True)
+            press_start_time[0] = None
+
+    root.bind('<ButtonPress-1>', on_press)
+    root.bind('<ButtonRelease-1>', on_release)
 
     chart_frame = ttk.Frame(root)
     chart_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -487,19 +503,8 @@ def format_difficulty(difficulty):
 #     exit_button.place(relx=1.0, rely=0.01, anchor='ne')  # Place in top-right corner# Variables for long press detection
 #     press_start_time = [None]
 #     long_press_duration = 2  # seconds
-
-    def on_press(event):
-        press_start_time[0] = time.time()
-
-    def on_release(event):
-        if press_start_time[0] is not None:
-            press_duration = time.time() - press_start_time[0]
-            if press_duration >= long_press_duration:
-                # create_display()
-                # root.config(cursor="none") # Get rid of that blasted cursor!
-                update_price_chart(force_update=True)
-                update_blockchain_info(force_update=True)
-        press_start_time[0] = None
+#TODO: On_press update event is broken.
+    
 
     root.bind('<ButtonPress-1>', on_press)
     root.bind('<ButtonRelease-1>', on_release)
@@ -525,11 +530,6 @@ def format_difficulty(difficulty):
     #     root.after(min(config['update_intervals']['price'], config['update_intervals']['blockchain']) * 1000, update_display)  # Schedule next price update from min value of intervals
     # # update_display()
     # return root
-    def update_display():
-        update_price_chart()      # Checks its own schedule internally
-        update_blockchain_info()  # Checks its own schedule internally
-        # Main loop runs every 5 minutes to check both
-        root.after(300000, update_display)  # 5 min = 300000 ms
 
 # Create and run the display
 try:
@@ -567,8 +567,8 @@ def main():
     global root
     try:
         root = create_display()
-        root.config(cursor="none")
-        update_display() # This will call both
+        # root.config(cursor="none")
+        update_display() # Start the scheduling loop
         # update_price_chart()
         # update_blockchain_info()
         root.mainloop()
