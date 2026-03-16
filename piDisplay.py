@@ -465,27 +465,28 @@ def format_difficulty(difficulty):
     else:
         return f"{difficulty:,.2f}"
 
-def create_display():
-    global root, last_price_update, fig, canvas
-    root = tk.Tk()
-    root.title("Bitcoin Node Information")
-    # Fullscreen this bish # Testing
-    root.overrideredirect(True)
-    root.geometry("{0}x{1}+0+0".format(root.winfo_screenwidth(), root.winfo_screenheight())) # WTF?
-    root.focus_set()  # <-- move focus to this widget
+# Was crashing and commented out in favor of previous def create_display()
+# def create_display():
+#     global root, last_price_update, fig, canvas
+#     root = tk.Tk()
+#     root.title("Bitcoin Node Information")
+#     # Fullscreen this bish # Testing
+#     root.overrideredirect(True)
+#     root.geometry("{0}x{1}+0+0".format(root.winfo_screenwidth(), root.winfo_screenheight())) # WTF?
+#     root.focus_set()  # <-- move focus to this widget
 
-    #Configure grid
-    root.grid_columnconfigure(0, weight=1)
-    root.grid_rowconfigure(1, weight=1)
+#     #Configure grid
+#     root.grid_columnconfigure(0, weight=1)
+#     root.grid_rowconfigure(1, weight=1)
     
-    root.bind('<Escape>', on_escape) # this line binds the Escape key
-    exit_button = tk.Button(root, text="Exit", command=root.quit, 
-                        bg='#202222', fg='white',
-                        bd=0, highlightthickness=0,
-                        activebackground='#202222', activeforeground='red')
-    exit_button.place(relx=1.0, rely=0.01, anchor='ne')  # Place in top-right corner# Variables for long press detection
-    press_start_time = [None]
-    long_press_duration = 2  # seconds
+#     root.bind('<Escape>', on_escape) # this line binds the Escape key
+#     exit_button = tk.Button(root, text="Exit", command=root.quit, 
+#                         bg='#202222', fg='white',
+#                         bd=0, highlightthickness=0,
+#                         activebackground='#202222', activeforeground='red')
+#     exit_button.place(relx=1.0, rely=0.01, anchor='ne')  # Place in top-right corner# Variables for long press detection
+#     press_start_time = [None]
+#     long_press_duration = 2  # seconds
 
     def on_press(event):
         press_start_time[0] = time.time()
@@ -566,8 +567,10 @@ def main():
     global root
     try:
         root = create_display()
-        update_price_chart()
-        update_blockchain_info()
+        root.config(cursor="none")
+        update_display() # This will call both
+        # update_price_chart()
+        # update_blockchain_info()
         root.mainloop()
     except tk.TclError as e:
         logging.error(
