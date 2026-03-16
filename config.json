@@ -11,18 +11,6 @@
             "rpc_host": "192.168.86.68",
             "rpc_password": "Waffle9d9RPC123PaSSw0rd",
             "rpc_port": "8332"
-        },
-        "parmanode": {
-            "rpc_user": "parman",
-            "rpc_host": "192.168.86.49",
-            "rpc_password": "parman",
-            "rpc_port": "8332"
-        },
-        "laptop-node": {
-            "rpc_user": "satoshi",
-            "rpc_host": "192.168.86.63",
-            "rpc_password": "Waffle9d9RPC123PaSSw0rd",
-            "rpc_port": "8332" 
         }
     },
     "connect_to": "NUC1",
