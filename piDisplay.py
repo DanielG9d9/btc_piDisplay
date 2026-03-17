@@ -4,7 +4,6 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from bitcoinrpc.authproxy import AuthServiceProxy
 from matplotlib.offsetbox import AnchoredText
 from datetime import datetime, timedelta
-from matplotlib.patches import Patch
 import matplotlib.ticker as mticker
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
@@ -343,13 +342,7 @@ def update_price_chart(force_update=False):
                     plot_values = values
 
                 ax.plot(plot_dates, plot_values, color='orange')
-                # Force axes patch clipping
-                clip_rect = Patch((0, 0), 1, 1, transform=fig.transFigure)
-                for line in ax.lines:
-                    line.set_clip_path(clip_rect)
-
                 fig.patch.set_facecolor('#191A1A')  # Slightly darker gray for figure background
-
                 if daily_change >= 0:
                     ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: +{daily_change}%", color='green', loc='left', fontsize=16)
                 else:
@@ -417,12 +410,6 @@ def update_price_chart(force_update=False):
                     today_end_naive = today_end.replace(tzinfo=None)
                     ax.set_xlim(today_midnight_naive, today_end_naive)
                     ax.margins(x=0, y=0.05)  # Zero x-padding, 5% y-margin
-
-                    # FORCE clipping - no lines outside axes
-                    for line in ax.lines:
-                        line.set_clip_on(True)
-                else:
-                    ax.margins(x=0.02)
                 canvas.draw()
                 
                 # This is overwriting the interval setting for updates. Need to update every hour or on the interval, whichever is smallest.
