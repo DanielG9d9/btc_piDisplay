@@ -199,21 +199,49 @@ def show_more_screen():
     update_more_metrics()
 
 def update_more_metrics():
-    global more_fig, more_ax, more_canvas
+    global more_fig, more_ax, more_canvas, current_price, daily_change, high_price, low_price
+
     if current_screen != "more" or more_ax is None:
         return
     
     more_ax.clear()
     more_ax.set_facecolor('#202222')
     
-    # Example node metrics (replace with real RPC calls)
-    more_ax.text(0.1, 0.9, "NODE METRICS", transform=more_ax.transAxes, 
-                color='white', fontsize=16, weight='bold')
-    more_ax.text(0.1, 0.7, f"Peers: {rpc_connection.getnetworkinfo().get('connections', 0)}", 
-                transform=more_ax.transAxes, color='cyan', fontsize=12)
+    # Add labels for high and low prices
+    # plt.plot([], [], label=f'24H High: {formatted_high_price}', linestyle='None', marker='None')
+    # plt.plot([], [], label=f'24H Low: {formatted_low_price}', linestyle='None', marker='None')
+    # # Add the legend outside the plot at the bottom
+    # plt.legend(loc='best', ncol=2)
+
+    # text = f"{timestamp}\n24H High: {formatted_high_price}\n24H Low: {formatted_low_price}"
+    # anchored_time = AnchoredText(text, loc=2, prop=dict(color='white', size=10), frameon=False)
+    # ax.add_artist(anchored_time)
+    
+    # Price info at top-right (your old AnchoredText)
+    timestamp = datetime.now().strftime('%-I:%M %p')
+    price_text = f"{timestamp}\n24H High: ${high_price:,.0f}\n24H Low: ${low_price:,.0f}"
+    more_ax.text(0.95, 0.95, price_text, transform=more_ax.transAxes,
+                color='white', fontsize=12, va='top', ha='right')
+    
+    # Node metrics below
+    more_ax.text(0.05, 0.85, "NODE METRICS", transform=more_ax.transAxes, 
+                color='cyan', fontsize=16, weight='bold')
+    more_ax.text(0.05, 0.75, f"Current Price: ${current_price:,.0f}", 
+                transform=more_ax.transAxes, color='yellow', fontsize=14)
+    more_ax.text(0.05, 0.65, f"24h Change: {daily_change:+.2f}%", 
+                transform=more_ax.transAxes, color='green' if daily_change >= 0 else 'red', fontsize=14)
+    
+    # Add more RPC metrics here
+    try:
+        network_info = rpc_connection.getnetworkinfo()
+        more_ax.text(0.05, 0.50, f"Peers: {network_info.get('connections', 0)}", 
+                    transform=more_ax.transAxes, color='white', fontsize=12)
+    except:
+        more_ax.text(0.05, 0.50, "Node offline", 
+                    transform=more_ax.transAxes, color='red', fontsize=12)
     
     more_ax.axis('off')
-    more_fig.tight_layout()
+    more_fig.tight_layout(pad=1)
     more_canvas.draw()
 
 rpc_connection = AuthServiceProxy(f"http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}", timeout=30)
@@ -428,22 +456,13 @@ def update_price_chart(force_update=False):
                 # No data today yet - use current price as fallback
                     high_price = low_price = current_price
                     formatted_high_price = formatted_low_price = f"${current_price:,.0f}"
-        
-                # Add labels for high and low prices
-                # plt.plot([], [], label=f'24H High: {formatted_high_price}', linestyle='None', marker='None')
-                # plt.plot([], [], label=f'24H Low: {formatted_low_price}', linestyle='None', marker='None')
-                # # Add the legend outside the plot at the bottom
-                # plt.legend(loc='best', ncol=2)
-
-                # text = f"{timestamp}\n24H High: {formatted_high_price}\n24H Low: {formatted_low_price}"
-                # anchored_time = AnchoredText(text, loc=2, prop=dict(color='white', size=10), frameon=False)
-                # ax.add_artist(anchored_time)
 
                 # Change axis colors to white
-                ax.spines['top'].set_color('red')
-                ax.spines['bottom'].set_color('red')
-                ax.spines['left'].set_color('red')
-                ax.spines['right'].set_color('red')
+                #TODO: Chang these to change with the title color based on positive or negative change.
+                ax.spines['top'].set_color('white')
+                ax.spines['bottom'].set_color('white')
+                ax.spines['left'].set_color('white')
+                ax.spines['right'].set_color('white')
                 
                 # Change tick parameters
                 ax.tick_params(axis='x', colors='white')  # X-axis ticks
