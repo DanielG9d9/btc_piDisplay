@@ -342,10 +342,6 @@ def update_price_chart(force_update=False):
                     plot_values = values
 
                 ax.plot(plot_dates, plot_values, color='orange')
-                # CLIP line to axes boundaries (fixes sliver outside chart)
-                ax.set_clip_on(True)
-                line = ax.lines[-1]  # Most recent line plotted
-                line.set_clip_path(ax.patch)
                 fig.patch.set_facecolor('#191A1A')  # Slightly darker gray for figure background
                 if daily_change >= 0:
                     ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: +{daily_change}%", color='green', loc='left', fontsize=16)
@@ -414,6 +410,12 @@ def update_price_chart(force_update=False):
                     today_end_naive = today_end.replace(tzinfo=None)
                     ax.set_xlim(today_midnight_naive, today_end_naive)
                     ax.margins(x=0, y=0.05)  # Zero x-padding, 5% y-margin
+
+                    # FORCE clipping - no lines outside axes
+                    for line in ax.lines:
+                        line.set_clip_on(True)
+                else:
+                    ax.margins(x=0.02)
                 canvas.draw()
                 
                 # This is overwriting the interval setting for updates. Need to update every hour or on the interval, whichever is smallest.
