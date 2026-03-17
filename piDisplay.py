@@ -319,6 +319,7 @@ def update_price_chart(force_update=False):
                 fig.clear()
                 ax = fig.add_subplot(111)
                 ax.set_facecolor('#202222') # Set the background color # Light gray background
+                fig.subplots_adjust(left=0.08, right=0.98, top=0.92, bottom=0.15) # Fix left margin for y-axis labels
                 
                 dates = [datetime.fromtimestamp(price[0]/1000) for price in prices]
                 values = [price[1] for price in prices]
@@ -506,7 +507,7 @@ def update_node_table(blockchain_data, network_data, fees):
         box = VPacker(children=[row1, row2, row3, row4], align="left", pad=0, sep=5)
 
         # Lower left of the chart
-        fig.subplots_adjust(bottom=0.2)  # Increase bottom margin # Adjust the plot layout to make room for the box
+        fig.subplots_adjust(bottom=0.12)  # Increase bottom margin # Adjust the plot layout to make room for the box
         anchored_box = AnchoredOffsetbox(loc=3, child=box, pad=0.5, frameon=True, # Create the anchored box
                                             bbox_to_anchor=(0.01, 0.02),
                                             bbox_transform=ax.transAxes,
@@ -522,7 +523,16 @@ def update_node_table(blockchain_data, network_data, fees):
             if isinstance(child, AnchoredOffsetbox):
                 child.remove()
         ax.add_artist(anchored_box) # Add the new anchored box
-        
+        # Testing
+        # Optimal margins for big figure
+        fig.subplots_adjust(
+            left=0.08,      # Y-axis labels
+            right=0.98,     # Edge-to-edge right
+            top=0.92,       # Title fits
+            bottom=0.12,    # Minimal bottom for node info
+            wspace=0.2,     # Horizontal subplot spacing
+            hspace=0.2      # Vertical subplot spacing
+        )
         canvas.draw_idle() # Update the canvas to reflect the changes
     return  
 
@@ -573,7 +583,7 @@ def format_difficulty(difficulty):
 # Create and run the display
 try:
     root = create_display() # Initial call
-    root.config(cursor="none") # Get rid of that blasted cursor!
+    # root.config(cursor="none") # Get rid of that blasted cursor!
     update_price_chart()
     update_blockchain_info()
     root.mainloop()
