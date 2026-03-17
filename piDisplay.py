@@ -324,25 +324,24 @@ def update_price_chart(force_update=False):
                 dates = [datetime.fromtimestamp(price[0]/1000) for price in prices]
                 values = [price[1] for price in prices]
 
-                # Ensure data stays WITHIN axes bounds before plotting
                 if viewing_mode == "static":
+                    # Full midnight-to-midnight EST (00:00-23:59)
                     est = pytz.timezone('US/Eastern')
                     now_est = datetime.now(est)
                     today_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0)
                     today_midnight_naive = today_midnight.replace(tzinfo=None)
-                    today_end = today_midnight.replace(hour=23, minute=59, second=59)
+                    today_end = today_midnight.replace(hour=23, minute=59, second=59, microsecond=999999)
                     today_end_naive = today_end.replace(tzinfo=None)
                     
-                    # STRICT bounds checking - no data outside 00:00-23:59
-                    valid_mask = [(today_midnight_naive <= d <= today_end_naive) for d in dates]
-                    plot_dates = [d for d, valid in zip(dates, valid_mask)]
-                    plot_values = [v for v, valid in zip(values, valid_mask)]
-                else:
+                    # Filter to today only (plot data we have)
+                    plot_dates = [d for d in dates if today_midnight_naive <= d <= today_end_naive]
+                    plot_values = [v for d, v in zip(dates, values) if today_midnight_naive <= d <= today_end_naive]
+                    
+                else:  # rolling - use full data
                     plot_dates = dates
                     plot_values = values
 
-                # Plot ONLY valid data
-                ax.plot(plot_dates, plot_values, color='orange', linewidth=2)
+                ax.plot(plot_dates, plot_values, color='orange')
                 fig.patch.set_facecolor('#191A1A')  # Slightly darker gray for figure background
                 if daily_change >= 0:
                     ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: +{daily_change}%", color='green', loc='left', fontsize=16)
