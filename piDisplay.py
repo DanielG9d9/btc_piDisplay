@@ -72,7 +72,7 @@ logging.basicConfig(
 # RPC connection
 rpc_connection = AuthServiceProxy(f"http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}", timeout=30)
 
-# Global Variables
+# Global Variables (Globals)
 last_price_update = 0 # Variable for tracking when to update price
 last_blockchain_update = 0 # Variable for tracking when to update blockchain info
 fig = None # Creating global fig
@@ -93,6 +93,10 @@ long_press_duration = 2
 price_timer_id = None
 blockchain_timer_id = None
 display_timer_id = None
+current_screen = "main"  # "main" or "more"
+more_fig = None
+more_canvas = None
+more_ax = None
 
 
 def update_display():
@@ -106,7 +110,7 @@ def update_display():
 
 
 def create_display():
-    global root, fig, canvas
+    global root, fig, canvas, chart_frame
     root = tk.Tk()
     root.title("Bitcoin Node Information")
 
@@ -141,6 +145,13 @@ def create_display():
         activebackground='#202222', activeforeground='red'
     )
     exit_button.place(relx=1.0, rely=0.01, anchor='ne')
+    # MORE button (next to Exit)
+    more_button = tk.Button(
+        root, text="More", command=show_more_screen,
+        bg='#202222', fg='cyan', bd=0, highlightthickness=0,
+        activebackground='#303333', activeforeground='cyan'
+    )
+    more_button.place(relx=0.95, rely=0.01, anchor='ne')  # Slightly left of Exit
 
     chart_frame = ttk.Frame(root)
     chart_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -156,7 +167,84 @@ def create_display():
     canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
 
     exit_button.lift()
+    more_button.lift()
     return root
+
+# def show_more_screen():
+#     global current_screen, more_fig, more_canvas, more_ax, fig, canvas
+
+#     if current_screen == "more":
+#         # Switch back to main screen
+#         chart_frame.pack_forget()  # Hide main chart
+#         more_canvas.get_tk_widget().pack_forget()  # Hide more chart
+#         canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+#         current_screen = "main"
+#         update_price_chart(force_update=True)
+#         return
+    
+#     # Switch to more screen
+#     current_screen = "more"
+#     canvas.get_tk_widget().pack_forget()  # Hide main
+    
+#     # Create more chart frame
+#     more_chart_frame = ttk.Frame(root)
+#     more_chart_frame.place(relx=0, rely=0.05, relwidth=1, relheight=0.95)
+    
+#     more_fig = plt.Figure(figsize=(12, 5))
+#     more_ax = more_fig.add_subplot(111)
+#     more_fig.patch.set_facecolor('#191A1A')
+#     more_ax.set_facecolor('#202222')
+    
+#     more_canvas = FigureCanvasTkAgg(more_fig, master=more_chart_frame)
+#     more_canvas.draw()
+#     more_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+    
+#     # Load more metrics (placeholder)
+#     update_more_metrics()
+def show_more_screen():
+    global current_screen, more_fig, more_canvas, more_ax, canvas
+    
+    if current_screen == "more":
+        # Back to main - use your existing canvas
+        more_canvas.get_tk_widget().destroy()  # Clean up more screen
+        canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+        current_screen = "main"
+        update_price_chart(force_update=True)
+        return
+    
+    # Switch to more screen
+    current_screen = "more"
+    canvas.get_tk_widget().pack_forget()  # Hide main chart
+    
+    # Create more chart directly in chart_frame
+    more_fig = plt.Figure(figsize=(14, 6))
+    more_ax = more_fig.add_subplot(111)
+    more_fig.patch.set_facecolor('#191A1A')
+    more_ax.set_facecolor('#202222')
+    
+    more_canvas = FigureCanvasTkAgg(more_fig, master=chart_frame)
+    more_canvas.draw()
+    more_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+    
+    update_more_metrics()
+
+def update_more_metrics():
+    global more_fig, more_ax, more_canvas
+    if current_screen != "more" or more_ax is None:
+        return
+    
+    more_ax.clear()
+    more_ax.set_facecolor('#202222')
+    
+    # Example node metrics (replace with real RPC calls)
+    more_ax.text(0.1, 0.9, "NODE METRICS", transform=more_ax.transAxes, 
+                color='white', fontsize=16, weight='bold')
+    more_ax.text(0.1, 0.7, f"Peers: {rpc_connection.getnetworkinfo().get('connections', 0)}", 
+                transform=more_ax.transAxes, color='cyan', fontsize=12)
+    
+    more_ax.axis('off')
+    more_fig.tight_layout()
+    more_canvas.draw()
 
 rpc_connection = AuthServiceProxy(f"http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}", timeout=30)
 
