@@ -527,9 +527,9 @@ def update_node_table(blockchain_data, network_data, fees):
         # Optimal margins for big figure
         fig.subplots_adjust(
             left=0.09,      # Y-axis labels
-            right=1,     # Edge-to-edge right
+            right=0.98,     # Edge-to-edge right
             top=0.92,       # Title fits
-            bottom=0.12,    # Minimal bottom for node info
+            bottom=0.08,    # Minimal bottom for node info
             wspace=0.2,     # Horizontal subplot spacing
             hspace=0.2      # Vertical subplot spacing
         )
