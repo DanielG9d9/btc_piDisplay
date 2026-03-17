@@ -332,21 +332,11 @@ def update_price_chart(force_update=False):
                     plot_dates = [d for d in dates if today_midnight_naive <= d <= today_end_naive]
                     plot_values = [v for d, v in zip(dates, values) if today_midnight_naive <= d <= today_end_naive]
                     
-                    # FORCE x-axis to full day (even if no data at end)
-                    ax.set_xlim(today_midnight_naive, today_end_naive)
                 else:  # rolling - use full data
                     plot_dates = dates
                     plot_values = values
 
                 ax.plot(plot_dates, plot_values, color='orange')
-                # Fit chart to data (no whitespace)
-                if len(plot_dates) > 1:
-                    ax.set_xlim(plot_dates[0], plot_dates[-1])
-                    ax.margins(x=0.02)
-                if len(plot_dates) > 1:
-                    ax.set_xlim(plot_dates[0], plot_dates[-1])  # Fit x-axis to data range
-                ax.margins(x=0.01)  # Small margin around data
-
                 fig.patch.set_facecolor('#191A1A')  # Slightly darker gray for figure background
                 if daily_change >= 0:
                     ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: +{daily_change}%", color='green', loc='left', fontsize=16)
@@ -405,7 +395,16 @@ def update_price_chart(force_update=False):
                 ax.yaxis.set_major_formatter(currency_formatter) # Set the y-axis major formatter
                 
                 fig.tight_layout() # Increased padding for X axis
-                # fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+                # FINAL STATIC X-AXIS LOCK - after all styling
+                if viewing_mode == "static":
+                    est = pytz.timezone('US/Eastern')
+                    now_est = datetime.now(est)
+                    today_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0)
+                    today_midnight_naive = today_midnight.replace(tzinfo=None)
+                    today_end = today_midnight.replace(hour=23, minute=59, second=59)
+                    today_end_naive = today_end.replace(tzinfo=None)
+                    ax.set_xlim(today_midnight_naive, today_end_naive)
+                    ax.margins(x=0)
                 canvas.draw()
                 
                 # This is overwriting the interval setting for updates. Need to update every hour or on the interval, whichever is smallest.
