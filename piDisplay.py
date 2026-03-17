@@ -342,6 +342,10 @@ def update_price_chart(force_update=False):
                     plot_values = values
 
                 ax.plot(plot_dates, plot_values, color='orange')
+                # CLIP line to axes boundaries (fixes sliver outside chart)
+                ax.set_clip_on(True)
+                line = ax.lines[-1]  # Most recent line plotted
+                line.set_clip_path(ax.patch)
                 fig.patch.set_facecolor('#191A1A')  # Slightly darker gray for figure background
                 if daily_change >= 0:
                     ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: +{daily_change}%", color='green', loc='left', fontsize=16)
