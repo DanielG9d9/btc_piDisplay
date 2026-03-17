@@ -411,7 +411,7 @@ def update_price_chart(force_update=False):
                 currency_formatter = mticker.FuncFormatter(lambda x, _: f'${x:,.0f}')
                 ax.yaxis.set_major_formatter(currency_formatter) # Set the y-axis major formatter
                 
-                # fig.tight_layout(pad=0.5, h_pad=0.8, w_pad=0.5)  # Minimal padding, max chart space                # FINAL STATIC X-AXIS LOCK - after all styling
+                fig.tight_layout(pad=0.5, h_pad=0.8, w_pad=0.5)  # Minimal padding, max chart space                # FINAL STATIC X-AXIS LOCK - after all styling
                 # Static full-day x-axis (LAST - overrides everything)
                 if viewing_mode == "static":
                     est = pytz.timezone('US/Eastern')
