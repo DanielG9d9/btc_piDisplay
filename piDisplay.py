@@ -113,14 +113,19 @@ def create_display():
     if IS_PI:
         # Fullscreen for Pi display
         root.overrideredirect(True)
-        root.geometry("{0}x{1}+0+0".format(
-            root.winfo_screenwidth(), root.winfo_screenheight()
-        ))
+        screen_w = root.winfo_screenwidth()
+        screen_h = root.winfo_screenheight()
+        root.geometry(f"{screen_w}x{screen_h}+0+0")
         root.config(cursor="none")
+        
+        # Figure matches screen exactly
+        fig_w = screen_w / 100  # DPI-adjusted
+        fig_h = screen_h / 100
+        fig = plt.Figure(figsize=(fig_w, fig_h), dpi=100)
     else:
-        # Desktop: normal window, optionally set a reasonable size
-        root.geometry("1024x600")  # or whatever matches your Pi resolution
-    
+        root.geometry("1280x720")
+        fig = plt.Figure(figsize=(12, 5))   
+
     root.focus_set()
     root.grid_columnconfigure(0, weight=1)
     root.grid_rowconfigure(1, weight=1)
@@ -140,7 +145,12 @@ def create_display():
     chart_frame = ttk.Frame(root)
     chart_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
-    fig = plt.Figure(figsize=(8, 3))
+    if IS_PI:
+        screen_width = root.winfo_screenwidth() / root.winfo_screenheight() * 10
+        screen_height = 4.0  # Fixed height ratio
+        fig = plt.Figure(figsize=(screen_width, screen_height))
+    else:
+        fig = plt.Figure(figsize=(10, 4))
     canvas = FigureCanvasTkAgg(fig, master=chart_frame)
     canvas.draw()
     canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
