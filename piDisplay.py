@@ -90,6 +90,10 @@ root = None
 app_running = True
 press_start_time = [None]
 long_press_duration = 2
+price_timer_id = None
+blockchain_timer_id = None
+display_timer_id = None
+
 
 def update_display():
     global app_running
@@ -98,7 +102,8 @@ def update_display():
     update_price_chart()      # Checks its own schedule internally
     update_blockchain_info()  # Checks its own schedule internally
     if app_running:
-        root.after(300000, update_display) # Check every 5 minutes if we need to update either
+        display_timer_id = root.after(300000, update_display)
+
 
 def create_display():
     global root, fig, canvas
@@ -159,37 +164,26 @@ logging.basicConfig(
 #     root.destroy()  # This cancels ALL pending after() calls automatically
 
 def proper_exit():
-    global app_running, root, fig, canvas, last_price_update, last_blockchain_update
+    global app_running, root, price_timer_id, blockchain_timer_id, display_timer_id
     app_running = False
     
-    # Stop ALL callbacks immediately
-    try:
-        root.after_cancel = lambda x: None  # Disable after_cancel completely
-    except:
-        pass
+    # Cancel known timer IDs safely
+    for timer_id in [price_timer_id, blockchain_timer_id, display_timer_id]:
+        if timer_id and timer_id != 'None':
+            try:
+                root.after_cancel(timer_id)
+            except:
+                pass
     
-    # Kill matplotlib
     try:
         plt.close('all')
-    except:
-        pass
-    
-    # Kill tkinter
-    try:
         root.quit()
-    except:
-        pass
-    
-    try:
         root.destroy()
     except:
         pass
     
-    # FORCE TERMINATE PYTHON - no mercy
-    import os
     import sys
-    sys.stdout.write('\r\033[K')  # Clear terminal line
-    os._exit(0)  # Hard kill, bypasses all cleanup
+    sys.exit(0)
 
 def on_press(event):
     press_start_time[0] = time.time()
@@ -394,8 +388,8 @@ def update_price_chart(force_update=False):
                 currency_formatter = mticker.FuncFormatter(lambda x, _: f'${x:,.0f}')
                 ax.yaxis.set_major_formatter(currency_formatter) # Set the y-axis major formatter
                 
-                fig.tight_layout() # Increased padding for X axis
-                # FINAL STATIC X-AXIS LOCK - after all styling
+                fig.tight_layout(pad=0.5, h_pad=0.8, w_pad=0.5)  # Minimal padding, max chart space                # FINAL STATIC X-AXIS LOCK - after all styling
+                # Static full-day x-axis (LAST - overrides everything)
                 if viewing_mode == "static":
                     est = pytz.timezone('US/Eastern')
                     now_est = datetime.now(est)
@@ -404,14 +398,14 @@ def update_price_chart(force_update=False):
                     today_end = today_midnight.replace(hour=23, minute=59, second=59)
                     today_end_naive = today_end.replace(tzinfo=None)
                     ax.set_xlim(today_midnight_naive, today_end_naive)
-                    ax.margins(x=0)
+                    ax.margins(x=0, y=0.05)  # Zero x-padding, 5% y-margin
                 canvas.draw()
                 
                 # This is overwriting the interval setting for updates. Need to update every hour or on the interval, whichever is smallest.
                 last_price_update = current_time
                 if app_running:
-                    next_update_time = time_until_next_even_hour() * 1000 # Schedule the next update at the top of the next hour
-                    root.after(next_update_time, update_price_chart)
+                    next_update_time = time_until_next_even_hour() * 1000
+                    price_timer_id = root.after(int(next_update_time), update_price_chart)  # Capture ID
 
             else:
                 # If we couldn't get prices, try again in 5 minutes
@@ -543,8 +537,11 @@ def update_blockchain_info(force_update=False):
                 previous_network = new_network_info     # Update variable with newest data
                 previous_fees = fees
                 last_blockchain_update = current_time   # Update the last update time before exiting udpate function                
-                next_update_time = time_until_next_10min() * 1000  # Next 10-min mark
-                root.after(next_update_time, update_blockchain_info)
+                # next_update_time = time_until_next_10min() * 1000  # Next 10-min mark
+                # root.after(next_update_time, update_blockchain_info)
+                if app_running:
+                    next_update_time = time_until_next_10min() * 1000
+                    blockchain_timer_id = root.after(int(next_update_time), update_blockchain_info)
                 return  # Exit early after scheduling
             except Exception as e: # Failure of RPC connection here
                     logging.error(f"{get_timestamp()} - Error updating blockchain info: Expected on first try. {e}")
