@@ -6,7 +6,7 @@
         "price": 3600,
         "blockchain": 600
     },
-    "viewing_mode": "static", 
+    "viewing_mode": "rolling", 
     "testing": false,
 
     "cache_file": "bitcoin_price_cache.json",
