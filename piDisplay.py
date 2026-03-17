@@ -1,3 +1,4 @@
+# Built by Danny Blue-Eyes
 from matplotlib.offsetbox import AnchoredOffsetbox, TextArea, VPacker, HPacker
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from bitcoinrpc.authproxy import AuthServiceProxy
@@ -25,11 +26,6 @@ parser = argparse.ArgumentParser(description="Bitcoin Pi Display")
 parser.add_argument('--testing', action='store_true', help='Enable testing mode')
 parser.add_argument('--config', type=str, help='Path to config file')
 args = parser.parse_args()
-
-# Load configuration - Desktop
-# with open('/home/satoshi/Documents/btc_piDisplay/config.json', 'r') as config_file: # Should be enabled for Pi Display.
-# with open('C:/dev/repository/btc_piDisplay/config.json', 'r') as config_file: # For testing from desktop # Customize to your own repository config location.
-#     config = json.load(config_file)
 
 # Use CLI --config first, then find config.json, then set defaults
 config_path = args.config or os.environ.get('PIDISPLAY_CONFIG')
@@ -87,8 +83,6 @@ root = None
 def update_display():
     update_price_chart()      # Checks its own schedule internally
     update_blockchain_info()  # Checks its own schedule internally
-    # Main loop runs every 5 minutes to check both
-    root.after(300000, update_display)  # 5 min = 300000 ms
 
 def create_display():
     global root, fig, canvas
@@ -110,7 +104,7 @@ def create_display():
     root.grid_columnconfigure(0, weight=1)
     root.grid_rowconfigure(1, weight=1)
 
-    root.bind("<Escape>", on_escape)
+    root.bind('<Escape>', on_escape)
 
     exit_button = tk.Button(
         root, text="Exit", command=root.quit,
@@ -156,10 +150,8 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+
 # Functions
-# def get_cpu_temp():
-#     temp = os.popen("vcgencmd measure_temp").readline()
-#     return float(temp.replace("temp=","").replace("'C",""))
 def get_cpu_temp():
     try:
         # This works on Raspberry Pi
@@ -481,56 +473,6 @@ def format_difficulty(difficulty):
     else:
         return f"{difficulty:,.2f}"
 
-# Was crashing and commented out in favor of previous def create_display()
-# def create_display():
-#     global root, last_price_update, fig, canvas
-#     root = tk.Tk()
-#     root.title("Bitcoin Node Information")
-#     # Fullscreen this bish # Testing
-#     root.overrideredirect(True)
-#     root.geometry("{0}x{1}+0+0".format(root.winfo_screenwidth(), root.winfo_screenheight())) # WTF?
-#     root.focus_set()  # <-- move focus to this widget
-
-#     #Configure grid
-#     root.grid_columnconfigure(0, weight=1)
-#     root.grid_rowconfigure(1, weight=1)
-    
-#     root.bind('<Escape>', on_escape) # this line binds the Escape key
-#     exit_button = tk.Button(root, text="Exit", command=root.quit, 
-#                         bg='#202222', fg='white',
-#                         bd=0, highlightthickness=0,
-#                         activebackground='#202222', activeforeground='red')
-#     exit_button.place(relx=1.0, rely=0.01, anchor='ne')  # Place in top-right corner# Variables for long press detection
-#     press_start_time = [None]
-#     long_press_duration = 2  # seconds
-#TODO: On_press update event is broken.
-    
-
-    root.bind('<ButtonPress-1>', on_press)
-    root.bind('<ButtonRelease-1>', on_release)
-    frame = ttk.Frame(root, padding="10")
-    frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-
-    # Create a frame for the chart
-    chart_frame = ttk.Frame(root)
-    chart_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-
-    # Create an initial empty chart
-    fig = plt.Figure(figsize=(8, 3))
-    canvas = FigureCanvasTkAgg(fig, master=chart_frame)
-    canvas.draw()
-    canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
-
-    exit_button.lift()  # Ensure the exit button stays on top
-
-    # def update_display():
-    #     update_price_chart()
-    #     exit_button.lift()  # Ensure the exit button stays on top
-    #     update_blockchain_info()
-    #     root.after(min(config['update_intervals']['price'], config['update_intervals']['blockchain']) * 1000, update_display)  # Schedule next price update from min value of intervals
-    # # update_display()
-    # return root
-
 # Create and run the display
 try:
     root = create_display() # Initial call
@@ -545,32 +487,11 @@ except KeyboardInterrupt as e: # Catch when user interupts program.
 except Exception as e: # Catch all other errors here.
     logging.error(f"An error occurred when initializing the app. {e}")
 
-# def main():
-#     global root, fig, canvas, ax
-#     root = create_display()
-#     fig = plt.Figure(figsize=(10, 6), dpi=100)
-#     ax = fig.add_subplot(111)
-#     canvas = FigureCanvasTkAgg(fig, master=root)
-#     canvas.draw()
-#     canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
-#     # Bind the long press event to the root window
-#     root.bind("<Key>", on_long_press)
-    
-#     update_price_chart()
-#     update_blockchain_info()
-#     root.mainloop()
-
-# if __name__ == "__main__":
-#     main()
-
 def main():
     global root
     try:
         root = create_display()
-        # root.config(cursor="none")
         update_display() # Start the scheduling loop
-        # update_price_chart()
-        # update_blockchain_info()
         root.mainloop()
     except tk.TclError as e:
         logging.error(
