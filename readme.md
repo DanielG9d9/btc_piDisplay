@@ -71,7 +71,19 @@ Follow these steps to install and set up the project:
     cd btc_piDisplay/
 4. Run the install.sh file.
     ```bash
-    ./install.sh # Run the script file to install dependencies.    
+    ./install.sh # Run the script file to install dependencies.  
+### Customizing the config file!  
+
+| Variable | Option |
+|---|---|
+| `connect_to` | Name of the device you want to connect to - configured at the bottom of the config.json.|
+| `time_series` | Accepts 'standard' time or will default to 24-hour format |
+| `update_intervals` | Specify how often the data should update.Integers are in seconds. |
+| `price` | Seconds to update -> Hourly = '3600' |
+| `blockchain` | Seconds to update -> 10-minutes = '600' |
+| `viewing_mode` | 'Rolling' or 'Static' - Rolling will always show full 24 hours of price data. Static will start at midnight and update with new price data until it resets the following day at midnight. |
+| `testing` | Specify if testing so the program will use fake data and work on a desktop display. Can also pass --testing in start command: ```python piDisplay.py --testing``` |
+    
 ## Manually Starting The Program
 If you need to manually start the display after a reboot or any reason you can easily do so by double clicking the Run Display.sh icon and "Execute."  
   

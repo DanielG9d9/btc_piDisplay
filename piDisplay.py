@@ -18,6 +18,7 @@ import logging
 import pathlib
 import json
 import time
+import pytz
 import os
 
 IS_PI = platform.machine().startswith("arm") or platform.machine().startswith("aarch")
@@ -41,15 +42,18 @@ if args.testing:
     config['testing'] = True
 
 # Use configuration values
+time_series = config['time_series'].lower()
+viewing_mode = config.get('viewing_mode', 'rolling').lower()
+testing = config['testing']
+
+
 connect_to = config['connect_to']
 rpc_settings = config['rpc_settings'][connect_to]
 rpc_user = rpc_settings['rpc_user']
 rpc_host = rpc_settings['rpc_host']
 rpc_password = rpc_settings['rpc_password']
 rpc_port = rpc_settings['rpc_port']
-time_series = config['time_series']
 CACHE_FILE = config['cache_file']
-testing = config['testing']
 
 # Set up logging
 log_file = config['testing_log_file'] if testing else config['log_file']
@@ -79,10 +83,18 @@ ax = None
 saved_timestamp = ""
 global root
 root = None
+app_running = True
+press_start_time = [None]
+long_press_duration = 2
 
 def update_display():
+    global app_running
+    if not app_running:
+        return  # Don't do anything if the app is not running   
     update_price_chart()      # Checks its own schedule internally
     update_blockchain_info()  # Checks its own schedule internally
+    if app_running:
+        root.after(300000, update_display) # Check every 5 minutes if we need to update either
 
 def create_display():
     global root, fig, canvas
@@ -105,31 +117,16 @@ def create_display():
     root.grid_rowconfigure(1, weight=1)
 
     root.bind('<Escape>', on_escape)
+    root.bind('<ButtonPress-1>', on_press)
+    root.bind('<ButtonRelease-1>', on_release)
 
     exit_button = tk.Button(
-        root, text="Exit", command=root.quit,
+        root, text="Exit", command=proper_exit,
         bg='#202222', fg='white',
         bd=0, highlightthickness=0,
         activebackground='#202222', activeforeground='red'
     )
     exit_button.place(relx=1.0, rely=0.01, anchor='ne')
-
-    press_start_time = [None]
-    long_press_duration = 2
-
-    def on_press(event):
-        press_start_time[0] = time.time()
-
-    def on_release(event):
-        if press_start_time[0] is not None:
-            press_duration = time.time() - press_start_time[0]
-            if press_duration >= long_press_duration:
-                update_price_chart(force_update=True)
-                update_blockchain_info(force_update=True)
-            press_start_time[0] = None
-
-    root.bind('<ButtonPress-1>', on_press)
-    root.bind('<ButtonRelease-1>', on_release)
 
     chart_frame = ttk.Frame(root)
     chart_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -152,6 +149,20 @@ logging.basicConfig(
 )
 
 # Functions
+def proper_exit():
+    global root, app_running
+    app_running = False
+    root.destroy()  # This cancels ALL pending after() calls automatically
+def on_press(event):
+    press_start_time[0] = time.time()
+
+def on_release(event):
+    if press_start_time[0] is not None:
+        press_duration = time.time() - press_start_time[0]
+        if press_duration >= long_press_duration:
+            update_price_chart(force_update=True)
+            update_blockchain_info(force_update=True)
+        press_start_time[0] = None
 def get_cpu_temp():
     try:
         # This works on Raspberry Pi
@@ -165,7 +176,7 @@ def get_cpu_temp():
         # Non-Pi or vcgencmd unavailable
         return None
 def on_escape(event):
-    root.quit()
+    proper_exit()
 def get_timestamp():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 def time_until_next_even_hour(): # Used for price data when updating hourly (3600 seconds)
@@ -233,7 +244,8 @@ def get_bitcoin_price():
         historical_data = historical_response.json()
         prices = historical_data['prices']
         
-        if prices:
+        if prices and app_running: # If we have price data and the app is still running
+            fig.clear() # Clear the figure before plotting new data
             previous_close_price = prices[0][1]  # The first entry is the oldest price (previous close)
             daily_change = (current_price - previous_close_price) / previous_close_price * 100 # Daily Change as percentage
             daily_change = round(daily_change, 2)
@@ -253,7 +265,10 @@ def get_bitcoin_price():
         logging.error(f"Error fetching price data: {e}")
         return None, None, None
 def update_price_chart(force_update=False):
-    global last_price_update, fig, canvas, ax
+    global last_price_update, app_running, fig, canvas, ax
+    if not app_running:
+        return  # Don't do anything if the app is not running
+    
     current_time = time.time()
     if force_update or last_price_update == 0 or (current_time - last_price_update >= config['update_intervals']['price']): # If it's a force update, hasn't been updated, or the interval time has been met.
         try: 
@@ -262,9 +277,31 @@ def update_price_chart(force_update=False):
                 fig.clear()
                 ax = fig.add_subplot(111)
                 ax.set_facecolor('#202222') # Set the background color # Light gray background
+                # dates = [datetime.fromtimestamp(price[0]/1000) for price in prices] # Convert timestamps to datetime objects
+                # values = [price[1] for price in prices]
+
+                # # if viewing_mode == "rolling":
+                # ax.plot(dates, values, color='orange') # Color of plt line (price)
+                # # else: # static
+                
                 dates = [datetime.fromtimestamp(price[0]/1000) for price in prices]
                 values = [price[1] for price in prices]
-                ax.plot(dates, values, color='orange') # Color of plt line (price)
+
+                if viewing_mode == "static":
+                    # Midnight to now EST
+                    est = pytz.timezone('US/Eastern')
+                    now_est = datetime.now(est)
+                    today_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0)
+                    
+                    # Filter to today only
+                    plot_dates = [d for d in dates if d >= today_midnight]
+                    plot_values = [v for d, v in zip(dates, values) if d >= today_midnight]
+                else:  # rolling - use full data
+                    plot_dates = dates
+                    plot_values = values
+
+                ax.plot(plot_dates, plot_values, color='orange')
+
                 fig.patch.set_facecolor('#191A1A')  # Slightly darker gray for figure background
                 if daily_change >= 0:
                     ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: +{daily_change}%", color='green', loc='left', fontsize=16)
@@ -275,7 +312,7 @@ def update_price_chart(force_update=False):
                 
                 # Add timestamp
                 #TODO Neither are working.
-                if time_series.lower() == "standard":
+                if time_series == "standard":
                     timestamp = datetime.now().strftime('%-I:%M %p')
                     # timestamp = datetime.now().strftime('%#I:%M %p')
                 else:
@@ -284,7 +321,10 @@ def update_price_chart(force_update=False):
                 # ax.add_artist(anchored_time) # Moving below so I can use one single legend
 
                 # Getting price values
-                price_values = [price[1] for price in prices]
+                # price_values = [price[1] for price in prices]
+                # high_price, low_price = max(price_values), min(price_values)
+                # Getting price values (use filtered data)
+                price_values = plot_values
                 high_price, low_price = max(price_values), min(price_values)
                 formatted_high_price, formatted_low_price = "${:,.0f}".format(high_price), "${:,.0f}".format(low_price)
         
@@ -322,8 +362,9 @@ def update_price_chart(force_update=False):
                 
                 # This is overwriting the interval setting for updates. Need to update every hour or on the interval, whichever is smallest.
                 last_price_update = current_time
-                next_update_time = time_until_next_even_hour() * 1000 # Schedule the next update at the top of the next hour
-                root.after(next_update_time, update_price_chart)
+                if app_running:
+                    next_update_time = time_until_next_even_hour() * 1000 # Schedule the next update at the top of the next hour
+                    root.after(next_update_time, update_price_chart)
 
             else:
                 # If we couldn't get prices, try again in 5 minutes
@@ -435,7 +476,9 @@ def update_node_table(blockchain_data, network_data, fees):
     return  
 
 def update_blockchain_info(force_update=False):
-    global root, last_blockchain_update, blockchain_chain, blockchain_blocks, blockchain_verification_progress, node_connections, cpu_temp, previous_chain, previous_network, previous_fees, saved_timestamp
+    global app_running, root, last_blockchain_update, blockchain_chain, blockchain_blocks, blockchain_verification_progress, node_connections, cpu_temp, previous_chain, previous_network, previous_fees, saved_timestamp
+    if not app_running:
+        return  # Don't do anything if the app is not running
     # Trying to pass in blockchain and network info to this update function.
     current_time = time.time()
     if force_update or (current_time - last_blockchain_update >= config['update_intervals']['blockchain']): # 600 seconds = 10 minutes
