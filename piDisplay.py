@@ -326,7 +326,6 @@ def update_price_chart(force_update=False):
                 values = [price[1] for price in prices]
 
                 if viewing_mode == "static":
-                    mask = [(today_midnight_naive <= d <= today_end_naive) for d in plot_dates]
                     # Full midnight-to-midnight EST (00:00-23:59)
                     est = pytz.timezone('US/Eastern')
                     now_est = datetime.now(est)
@@ -342,12 +341,8 @@ def update_price_chart(force_update=False):
                 else:  # rolling - use full data
                     plot_dates = dates
                     plot_values = values
-                    mask = [True] * len(plot_dates)
 
-                plot_dates_clipped = [d for d, m in zip(plot_dates, mask)]
-                plot_values_clipped = [v for v, m in zip(plot_values, mask)]
-                
-                ax.plot(plot_dates_clipped, plot_values_clipped, color='orange', clip_on=True)
+                ax.plot(plot_dates, plot_values, color='orange')
                 # Force axes patch clipping
                 clip_rect = Patch((0, 0), 1, 1, transform=fig.transFigure)
                 for line in ax.lines:
