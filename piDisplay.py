@@ -170,37 +170,7 @@ def create_display():
     more_button.lift()
     return root
 
-# def show_more_screen():
-#     global current_screen, more_fig, more_canvas, more_ax, fig, canvas
 
-#     if current_screen == "more":
-#         # Switch back to main screen
-#         chart_frame.pack_forget()  # Hide main chart
-#         more_canvas.get_tk_widget().pack_forget()  # Hide more chart
-#         canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
-#         current_screen = "main"
-#         update_price_chart(force_update=True)
-#         return
-    
-#     # Switch to more screen
-#     current_screen = "more"
-#     canvas.get_tk_widget().pack_forget()  # Hide main
-    
-#     # Create more chart frame
-#     more_chart_frame = ttk.Frame(root)
-#     more_chart_frame.place(relx=0, rely=0.05, relwidth=1, relheight=0.95)
-    
-#     more_fig = plt.Figure(figsize=(12, 5))
-#     more_ax = more_fig.add_subplot(111)
-#     more_fig.patch.set_facecolor('#191A1A')
-#     more_ax.set_facecolor('#202222')
-    
-#     more_canvas = FigureCanvasTkAgg(more_fig, master=more_chart_frame)
-#     more_canvas.draw()
-#     more_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
-    
-#     # Load more metrics (placeholder)
-#     update_more_metrics()
 def show_more_screen():
     global current_screen, more_fig, more_canvas, more_ax, canvas
     
@@ -460,20 +430,20 @@ def update_price_chart(force_update=False):
                     formatted_high_price = formatted_low_price = f"${current_price:,.0f}"
         
                 # Add labels for high and low prices
-                plt.plot([], [], label=f'24H High: {formatted_high_price}', linestyle='None', marker='None')
-                plt.plot([], [], label=f'24H Low: {formatted_low_price}', linestyle='None', marker='None')
-                # Add the legend outside the plot at the bottom
-                plt.legend(loc='best', ncol=2)
+                # plt.plot([], [], label=f'24H High: {formatted_high_price}', linestyle='None', marker='None')
+                # plt.plot([], [], label=f'24H Low: {formatted_low_price}', linestyle='None', marker='None')
+                # # Add the legend outside the plot at the bottom
+                # plt.legend(loc='best', ncol=2)
 
-                text = f"{timestamp}\n24H High: {formatted_high_price}\n24H Low: {formatted_low_price}"
-                anchored_time = AnchoredText(text, loc=2, prop=dict(color='white', size=10), frameon=False)
-                ax.add_artist(anchored_time)
+                # text = f"{timestamp}\n24H High: {formatted_high_price}\n24H Low: {formatted_low_price}"
+                # anchored_time = AnchoredText(text, loc=2, prop=dict(color='white', size=10), frameon=False)
+                # ax.add_artist(anchored_time)
 
                 # Change axis colors to white
-                ax.spines['top'].set_color('white')
-                ax.spines['bottom'].set_color('white')
-                ax.spines['left'].set_color('white')
-                ax.spines['right'].set_color('white')
+                ax.spines['top'].set_color('red')
+                ax.spines['bottom'].set_color('red')
+                ax.spines['left'].set_color('red')
+                ax.spines['right'].set_color('red')
                 
                 # Change tick parameters
                 ax.tick_params(axis='x', colors='white')  # X-axis ticks
