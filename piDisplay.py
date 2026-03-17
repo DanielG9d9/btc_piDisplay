@@ -244,10 +244,9 @@ def get_bitcoin_price():
         historical_data = historical_response.json()
         prices = historical_data['prices']
         
-        if prices and app_running: # If we have price data and the app is still running
-            fig.clear() # Clear the figure before plotting new data
-            previous_close_price = prices[0][1]  # The first entry is the oldest price (previous close)
-            daily_change = (current_price - previous_close_price) / previous_close_price * 100 # Daily Change as percentage
+        if prices:
+            previous_close_price = prices[0][1]
+            daily_change = (current_price - previous_close_price) / previous_close_price * 100
             daily_change = round(daily_change, 2)
             if testing:
                 with open(CACHE_FILE, 'w') as cache_file: # Save the fetched data to cache
@@ -273,7 +272,7 @@ def update_price_chart(force_update=False):
     if force_update or last_price_update == 0 or (current_time - last_price_update >= config['update_intervals']['price']): # If it's a force update, hasn't been updated, or the interval time has been met.
         try: 
             current_price, daily_change, prices = get_bitcoin_price()
-            if prices: # If we have price data
+            if prices and len(prices) > 0: # If we have price data and it's not empty
                 fig.clear()
                 ax = fig.add_subplot(111)
                 ax.set_facecolor('#202222') # Set the background color # Light gray background
@@ -301,6 +300,9 @@ def update_price_chart(force_update=False):
                     plot_values = values
 
                 ax.plot(plot_dates, plot_values, color='orange')
+                if len(plot_dates) > 1:
+                    ax.set_xlim(plot_dates[0], plot_dates[-1])  # Fit x-axis to data range
+                ax.margins(x=0.01)  # Small margin around data
 
                 fig.patch.set_facecolor('#191A1A')  # Slightly darker gray for figure background
                 if daily_change >= 0:
