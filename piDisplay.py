@@ -25,6 +25,7 @@ IS_PI = platform.machine().startswith("arm") or platform.machine().startswith("a
 # Parse command line args FIRST
 parser = argparse.ArgumentParser(description="Bitcoin Pi Display")
 parser.add_argument('--testing', action='store_true', help='Enable testing mode')
+parser.add_argument('--static', action='store_true', help='Force static viewing mode')
 parser.add_argument('--config', type=str, help='Path to config file')
 args = parser.parse_args()
 
@@ -38,8 +39,11 @@ with open(config_path, 'r') as config_file:
     config = json.load(config_file)
 
 # CLI --testing OVERRIDES config.json
+# CLI args OVERRIDE config.json
 if args.testing:
     config['testing'] = True
+if args.static:
+    viewing_mode = 'static'  # CLI flag overrides config
 
 # Use configuration values
 time_series = config['time_series'].lower()
@@ -149,10 +153,44 @@ logging.basicConfig(
 )
 
 # Functions
+# def proper_exit():
+#     global root, app_running
+#     app_running = False
+#     root.destroy()  # This cancels ALL pending after() calls automatically
+
 def proper_exit():
-    global root, app_running
+    global app_running, root, fig, canvas, last_price_update, last_blockchain_update
     app_running = False
-    root.destroy()  # This cancels ALL pending after() calls automatically
+    
+    # Stop ALL callbacks immediately
+    try:
+        root.after_cancel = lambda x: None  # Disable after_cancel completely
+    except:
+        pass
+    
+    # Kill matplotlib
+    try:
+        plt.close('all')
+    except:
+        pass
+    
+    # Kill tkinter
+    try:
+        root.quit()
+    except:
+        pass
+    
+    try:
+        root.destroy()
+    except:
+        pass
+    
+    # FORCE TERMINATE PYTHON - no mercy
+    import os
+    import sys
+    sys.stdout.write('\r\033[K')  # Clear terminal line
+    os._exit(0)  # Hard kill, bypasses all cleanup
+
 def on_press(event):
     press_start_time[0] = time.time()
 
@@ -263,6 +301,7 @@ def get_bitcoin_price():
     except requests.RequestException as e:
         logging.error(f"Error fetching price data: {e}")
         return None, None, None
+    
 def update_price_chart(force_update=False):
     global last_price_update, app_running, fig, canvas, ax
     if not app_running:
@@ -276,30 +315,34 @@ def update_price_chart(force_update=False):
                 fig.clear()
                 ax = fig.add_subplot(111)
                 ax.set_facecolor('#202222') # Set the background color # Light gray background
-                # dates = [datetime.fromtimestamp(price[0]/1000) for price in prices] # Convert timestamps to datetime objects
-                # values = [price[1] for price in prices]
-
-                # # if viewing_mode == "rolling":
-                # ax.plot(dates, values, color='orange') # Color of plt line (price)
-                # # else: # static
                 
                 dates = [datetime.fromtimestamp(price[0]/1000) for price in prices]
                 values = [price[1] for price in prices]
 
                 if viewing_mode == "static":
-                    # Midnight to now EST
+                    # Full midnight-to-midnight EST (00:00-23:59)
                     est = pytz.timezone('US/Eastern')
                     now_est = datetime.now(est)
                     today_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0)
+                    today_midnight_naive = today_midnight.replace(tzinfo=None)
+                    today_end = today_midnight.replace(hour=23, minute=59, second=59, microsecond=999999)
+                    today_end_naive = today_end.replace(tzinfo=None)
                     
-                    # Filter to today only
-                    plot_dates = [d for d in dates if d >= today_midnight]
-                    plot_values = [v for d, v in zip(dates, values) if d >= today_midnight]
+                    # Filter to today only (plot data we have)
+                    plot_dates = [d for d in dates if today_midnight_naive <= d <= today_end_naive]
+                    plot_values = [v for d, v in zip(dates, values) if today_midnight_naive <= d <= today_end_naive]
+                    
+                    # FORCE x-axis to full day (even if no data at end)
+                    ax.set_xlim(today_midnight_naive, today_end_naive)
                 else:  # rolling - use full data
                     plot_dates = dates
                     plot_values = values
 
                 ax.plot(plot_dates, plot_values, color='orange')
+                # Fit chart to data (no whitespace)
+                if len(plot_dates) > 1:
+                    ax.set_xlim(plot_dates[0], plot_dates[-1])
+                    ax.margins(x=0.02)
                 if len(plot_dates) > 1:
                     ax.set_xlim(plot_dates[0], plot_dates[-1])  # Fit x-axis to data range
                 ax.margins(x=0.01)  # Small margin around data
@@ -321,14 +364,17 @@ def update_price_chart(force_update=False):
                     timestamp = datetime.now().strftime("%m/%d/%Y - %H:%M") 
                 # anchored_time = AnchoredText(timestamp, loc=2, prop=dict(color='white', size=10), frameon=False)
                 # ax.add_artist(anchored_time) # Moving below so I can use one single legend
-
-                # Getting price values
-                # price_values = [price[1] for price in prices]
-                # high_price, low_price = max(price_values), min(price_values)
+           
                 # Getting price values (use filtered data)
                 price_values = plot_values
-                high_price, low_price = max(price_values), min(price_values)
-                formatted_high_price, formatted_low_price = "${:,.0f}".format(high_price), "${:,.0f}".format(low_price)
+                if len(price_values) > 0:
+                    high_price, low_price = max(price_values), min(price_values)
+                    formatted_high_price = "${:,.0f}".format(high_price)
+                    formatted_low_price = "${:,.0f}".format(low_price)
+                else:
+                # No data today yet - use current price as fallback
+                    high_price = low_price = current_price
+                    formatted_high_price = formatted_low_price = f"${current_price:,.0f}"
         
                 # Add labels for high and low prices
                 plt.plot([], [], label=f'24H High: {formatted_high_price}', linestyle='None', marker='None')
