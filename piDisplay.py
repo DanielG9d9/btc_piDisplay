@@ -189,10 +189,11 @@ def show_more_screen():
         current_screen = "main"
         return
     
-    # Switch to more screen (unchanged)
+    # Switch to more screen
     current_screen = "more"
-    canvas.get_tk_widget().pack_forget()
+    canvas.get_tk_widget().pack_forget()  # Hide main chart
     
+    # Create more chart directly in chart_frame
     more_fig = plt.Figure(figsize=(14, 6))
     more_ax = more_fig.add_subplot(111)
     more_fig.patch.set_facecolor('#191A1A')
@@ -205,39 +206,21 @@ def show_more_screen():
     update_more_metrics()
 
 def update_more_metrics():
-    global more_fig, more_ax, more_canvas, current_price, daily_change, high_price, low_price
-
+    global more_fig, more_ax, more_canvas
     if current_screen != "more" or more_ax is None:
         return
     
     more_ax.clear()
     more_ax.set_facecolor('#202222')
-        
-    # Price info at top-right (your old AnchoredText)
-    timestamp = datetime.now().strftime('%-I:%M %p')
-    price_text = f"{timestamp}\n24H High: ${high_price:,.0f}\n24H Low: ${low_price:,.0f}"
-    more_ax.text(0.95, 0.95, price_text, transform=more_ax.transAxes,
-                color='white', fontsize=12, va='top', ha='right')
     
-    # Node metrics below
-    more_ax.text(0.05, 0.85, "NODE METRICS", transform=more_ax.transAxes, 
-                color='cyan', fontsize=16, weight='bold')
-    more_ax.text(0.05, 0.75, f"Current Price: ${current_price:,.0f}", 
-                transform=more_ax.transAxes, color='yellow', fontsize=14)
-    more_ax.text(0.05, 0.65, f"24h Change: {daily_change:+.2f}%", 
-                transform=more_ax.transAxes, color='green' if daily_change >= 0 else 'red', fontsize=14)
-    
-    # Add more RPC metrics here
-    try:
-        network_info = rpc_connection.getnetworkinfo()
-        more_ax.text(0.05, 0.50, f"Peers: {network_info.get('connections', 0)}", 
-                    transform=more_ax.transAxes, color='white', fontsize=12)
-    except:
-        more_ax.text(0.05, 0.50, "Node offline", 
-                    transform=more_ax.transAxes, color='red', fontsize=12)
+    # Example node metrics (replace with real RPC calls)
+    more_ax.text(0.1, 0.9, "NODE METRICS", transform=more_ax.transAxes, 
+                color='white', fontsize=16, weight='bold')
+    more_ax.text(0.1, 0.7, f"Peers: {rpc_connection.getnetworkinfo().get('connections', 0)}", 
+                transform=more_ax.transAxes, color='cyan', fontsize=12)
     
     more_ax.axis('off')
-    more_fig.tight_layout(pad=1)
+    more_fig.tight_layout()
     more_canvas.draw()
 
 rpc_connection = AuthServiceProxy(f"http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}", timeout=30)
@@ -682,3 +665,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# TODO: Move functions into a library file and import them here to clean up the main display code.
