@@ -50,7 +50,6 @@ time_series = config['time_series'].lower()
 viewing_mode = config.get('viewing_mode', 'rolling').lower()
 testing = config['testing']
 
-
 connect_to = config['connect_to']
 rpc_settings = config['rpc_settings'][connect_to]
 rpc_user = rpc_settings['rpc_user']
@@ -94,10 +93,10 @@ price_timer_id = None
 blockchain_timer_id = None
 display_timer_id = None
 current_screen = "main"  # "main" or "more"
+chart_frame = None
 more_fig = None
 more_canvas = None
 more_ax = None
-
 
 def update_display():
     global app_running
@@ -107,7 +106,6 @@ def update_display():
     update_blockchain_info()  # Checks its own schedule internally
     if app_running:
         display_timer_id = root.after(300000, update_display)
-
 
 def create_display():
     global root, fig, canvas, chart_frame
@@ -172,21 +170,29 @@ def create_display():
 
 
 def show_more_screen():
-    global current_screen, more_fig, more_canvas, more_ax, canvas
-    
+    global current_screen, more_fig, more_canvas, more_ax, canvas, fig, ax    
+
     if current_screen == "more":
-        # Back to main - use your existing canvas
-        more_canvas.get_tk_widget().destroy()  # Clean up more screen
+        # ALWAYS RECREATE MAIN SCREEN FRESH - identical to initial state
+        more_canvas.get_tk_widget().destroy()
+        
+        # Completely rebuild main chart from scratch
+        fig.clear()
+        ax = fig.add_subplot(111)
+        canvas.draw()
         canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
-        current_screen = "main"
+        
+        # Force full refresh of BOTH price chart AND node data
         update_price_chart(force_update=True)
+        update_blockchain_info(force_update=True)
+        
+        current_screen = "main"
         return
     
-    # Switch to more screen
+    # Switch to more screen (unchanged)
     current_screen = "more"
-    canvas.get_tk_widget().pack_forget()  # Hide main chart
+    canvas.get_tk_widget().pack_forget()
     
-    # Create more chart directly in chart_frame
     more_fig = plt.Figure(figsize=(14, 6))
     more_ax = more_fig.add_subplot(111)
     more_fig.patch.set_facecolor('#191A1A')
@@ -206,17 +212,7 @@ def update_more_metrics():
     
     more_ax.clear()
     more_ax.set_facecolor('#202222')
-    
-    # Add labels for high and low prices
-    # plt.plot([], [], label=f'24H High: {formatted_high_price}', linestyle='None', marker='None')
-    # plt.plot([], [], label=f'24H Low: {formatted_low_price}', linestyle='None', marker='None')
-    # # Add the legend outside the plot at the bottom
-    # plt.legend(loc='best', ncol=2)
-
-    # text = f"{timestamp}\n24H High: {formatted_high_price}\n24H Low: {formatted_low_price}"
-    # anchored_time = AnchoredText(text, loc=2, prop=dict(color='white', size=10), frameon=False)
-    # ax.add_artist(anchored_time)
-    
+        
     # Price info at top-right (your old AnchoredText)
     timestamp = datetime.now().strftime('%-I:%M %p')
     price_text = f"{timestamp}\n24H High: ${high_price:,.0f}\n24H Low: ${low_price:,.0f}"
@@ -252,12 +248,6 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
-
-# Functions
-# def proper_exit():
-#     global root, app_running
-#     app_running = False
-#     root.destroy()  # This cancels ALL pending after() calls automatically
 
 def proper_exit():
     global app_running, root, price_timer_id, blockchain_timer_id, display_timer_id
@@ -429,10 +419,13 @@ def update_price_chart(force_update=False):
 
                 ax.plot(plot_dates, plot_values, color='orange')
                 fig.patch.set_facecolor('#191A1A')  # Slightly darker gray for figure background
+                # title_color = ''
                 if daily_change >= 0:
                     ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: +{daily_change}%", color='green', loc='left', fontsize=16)
+                    title_color = 'green'
                 else:
                     ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: -{abs(daily_change)}%", color='red', loc='left', fontsize=16)
+                    title_color = 'red'
                 # ax.set_xlabel("Time", color='white') # Do we really need this?
                 # ax.set_ylabel("Price (USD)", color='white') # Leaving incase someone does!
                 
@@ -459,10 +452,10 @@ def update_price_chart(force_update=False):
 
                 # Change axis colors to white
                 #TODO: Chang these to change with the title color based on positive or negative change.
-                ax.spines['top'].set_color('white')
-                ax.spines['bottom'].set_color('white')
-                ax.spines['left'].set_color('white')
-                ax.spines['right'].set_color('white')
+                ax.spines['top'].set_color(title_color)
+                ax.spines['bottom'].set_color(title_color)
+                ax.spines['left'].set_color(title_color)
+                ax.spines['right'].set_color(title_color)
                 
                 # Change tick parameters
                 ax.tick_params(axis='x', colors='white')  # X-axis ticks
