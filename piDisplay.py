@@ -465,9 +465,15 @@ def update_price_chart(force_update=False):
                     ax.margins(x=0, y=0.05)  # Zero x-padding, 5% y-margin
                 canvas.draw()
                 
+                # Redraw node info if available
+                if previous_chain is not None:
+                    update_node_table(previous_chain, previous_network, previous_fees)
+                
                 # This is overwriting the interval setting for updates. Need to update every hour or on the interval, whichever is smallest.
                 last_price_update = current_time
                 if app_running:
+                    if price_timer_id is not None:
+                        root.after_cancel(price_timer_id)
                     next_update_time = time_until_next_even_hour() * 1000
                     price_timer_id = root.after(int(next_update_time), update_price_chart)  # Capture ID
 
@@ -613,6 +619,8 @@ def update_blockchain_info(force_update=False):
                 # next_update_time = time_until_next_10min() * 1000  # Next 10-min mark
                 # root.after(next_update_time, update_blockchain_info)
                 if app_running:
+                    if blockchain_timer_id is not None:
+                        root.after_cancel(blockchain_timer_id)
                     next_update_time = time_until_next_10min() * 1000
                     blockchain_timer_id = root.after(int(next_update_time), update_blockchain_info)
                 return  # Exit early after scheduling
