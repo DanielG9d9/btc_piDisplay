@@ -181,8 +181,8 @@ def show_more_screen():
         ax = fig.add_subplot(111)
         canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
         
-        # Force full refresh of BOTH price chart AND node data
-        update_price_chart(force_update=True)
+        # Load from cache instead of forcing update
+        update_price_chart_from_cache()
         update_blockchain_info(force_update=True)
         
         current_screen = "main"
@@ -385,7 +385,45 @@ def get_address_balance(address):
         logging.error(f"Error getting address balance: {e}")
         return 0
 
+def initialize_price_cache():
+    """Fetch fresh price data and cache it on startup"""
+    try:
+        print("Initializing price cache...")
+        current_price, daily_change, prices = get_bitcoin_price()
+        if current_price is not None:
+            with open(CACHE_FILE, 'w') as cache_file:
+                json.dump({
+                    "current_price": current_price,
+                    "daily_change": daily_change,
+                    "prices": prices,
+                    "timestamp": time.time()
+                }, cache_file)
+            print("Price cache initialized successfully.")
+        else:
+            print("Failed to initialize price cache - no data available.")
+    except Exception as e:
+        logging.error(f"Error initializing price cache: {e}")
+        print(f"Error initializing price cache: {e}")
+
+def load_price_from_cache():
+    """Load price data from cache without fetching new data"""
+    try:
+        if os.path.exists(CACHE_FILE):
+            with open(CACHE_FILE, 'r') as cache_file:
+                cached_data = json.load(cache_file)
+                current_price = cached_data.get("current_price")
+                daily_change = cached_data.get("daily_change")
+                prices = cached_data.get("prices")
+                print("Loaded price data from cache.")
+                return current_price, daily_change, prices
+        else:
+            print("Cache file does not exist.")
+            return None, None, None
+    except Exception as e:
+        logging.error(f"Error loading price from cache: {e}")
+        return None, None, None
 def get_bitcoin_price():
+    """Fetch current Bitcoin price and historical data"""
     try:
         if testing:
             if os.path.exists(CACHE_FILE): # Check if cache file exists
@@ -421,15 +459,6 @@ def get_bitcoin_price():
             previous_close_price = prices[0][1]
             daily_change = (current_price - previous_close_price) / previous_close_price * 100
             daily_change = round(daily_change, 2)
-            if testing:
-                with open(CACHE_FILE, 'w') as cache_file: # Save the fetched data to cache
-                    json.dump({
-                        "current_price": current_price,
-                        "daily_change": daily_change,
-                        "prices": prices
-                    }, cache_file)
-
-                print("Fetched and cached new price data.")
             return current_price, daily_change, prices
         else:
             return current_price, None, None
@@ -437,16 +466,142 @@ def get_bitcoin_price():
         logging.error(f"Error fetching price data: {e}")
         return None, None, None
     
+def update_price_chart_from_cache():
+    """Update the price chart using cached data without fetching new data"""
+    global last_price_update, app_running, fig, canvas, ax
+    if not app_running:
+        return  # Don't do anything if the app is not running
+    
+    try:
+        current_price, daily_change, prices = load_price_from_cache()
+        if current_price is None or prices is None or len(prices) == 0:
+            # If no cached data, show error message
+            if ax is None:
+                fig.clear()
+                ax = fig.add_subplot(111)
+            else:
+                ax.clear()
+            ax.set_facecolor('#202222')
+            ax.text(
+                0.5, 0.5,
+                "No cached price data available.\nPlease wait for next update.",
+                ha='center', va='center', color='white', fontsize=14,
+                transform=ax.transAxes
+            )
+            fig.patch.set_facecolor('#191A1A')
+            canvas.draw_idle()
+            return
+
+        # Use cached data to update the chart
+        fig.clear()
+        ax = fig.add_subplot(111)
+        ax.set_facecolor('#202222')
+        fig.subplots_adjust(left=0.08, right=0.98, top=0.92, bottom=0.15)
+        
+        dates = [datetime.fromtimestamp(price[0]/1000) for price in prices]
+        values = [price[1] for price in prices]
+
+        if viewing_mode == "static":
+            est = pytz.timezone('US/Eastern')
+            now_est = datetime.now(est)
+            today_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0)
+            today_midnight_naive = today_midnight.replace(tzinfo=None)
+            today_end = today_midnight.replace(hour=23, minute=59, second=59, microsecond=999999)
+            today_end_naive = today_end.replace(tzinfo=None)
+            
+            plot_dates = [d for d in dates if today_midnight_naive <= d <= today_end_naive]
+            plot_values = [v for d, v in zip(dates, values) if today_midnight_naive <= d <= today_end_naive]
+        else:
+            plot_dates = dates
+            plot_values = values
+
+        ax.plot(plot_dates, plot_values, color='orange')
+        fig.patch.set_facecolor('#191A1A')
+        
+        if daily_change is not None and daily_change >= 0:
+            ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: +{daily_change}%", color='green', loc='left', fontsize=16)
+            title_color = 'green'
+        elif daily_change is not None:
+            ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: -{abs(daily_change)}%", color='red', loc='left', fontsize=16)
+            title_color = 'red'
+        else:
+            ax.set_title(f"฿itcoin Price: ${current_price:,.0f}", color='white', loc='left', fontsize=16)
+            title_color = 'white'
+
+        ax.spines['top'].set_color(title_color)
+        ax.spines['bottom'].set_color(title_color)
+        ax.spines['left'].set_color(title_color)
+        ax.spines['right'].set_color(title_color)
+        
+        ax.tick_params(axis='x', colors='white')
+        ax.tick_params(axis='y', colors='white')
+        
+        if time_series.lower() == "standard":
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%-I:%M %p'))
+        else:
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+        
+        currency_formatter = mticker.FuncFormatter(lambda x, _: f'${x:,.0f}')
+        ax.yaxis.set_major_formatter(currency_formatter)
+        
+        fig.tight_layout(pad=0.5, h_pad=0.8, w_pad=0.5)
+        
+        if viewing_mode == "static":
+            est = pytz.timezone('US/Eastern')
+            now_est = datetime.now(est)
+            today_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0)
+            today_midnight_naive = today_midnight.replace(tzinfo=None)
+            today_end = today_midnight.replace(hour=23, minute=59, second=59)
+            today_end_naive = today_end.replace(tzinfo=None)
+            ax.set_xlim(today_midnight_naive, today_end_naive)
+            ax.margins(x=0, y=0.05)
+        
+        canvas.draw()
+        
+        # Redraw node info if available
+        if previous_chain is not None:
+            update_node_table(previous_chain, previous_network, previous_fees)
+            
+    except Exception as e:
+        logging.error(f"Error updating price chart from cache: {e}")
+        if ax is None:
+            fig.clear()
+            ax = fig.add_subplot(111)
+        else:
+            ax.clear()
+        ax.set_facecolor('#202222')
+        ax.text(
+            0.5, 0.5,
+            "Error loading cached price data.",
+            ha='center', va='center', color='white', fontsize=14,
+            transform=ax.transAxes
+        )
+        fig.patch.set_facecolor('#191A1A')
+        canvas.draw_idle()
+
 def update_price_chart(force_update=False):
     global last_price_update, app_running, fig, canvas, ax
     if not app_running:
         return  # Don't do anything if the app is not running
     
-    current_time = time.time()
-    if force_update or last_price_update == 0 or (current_time - last_price_update >= config['update_intervals']['price']): # If it's a force update, hasn't been updated, or the interval time has been met.
-        try: 
+    try:
+        current_time = time.time()
+        if force_update or last_price_update == 0 or (current_time - last_price_update >= config['update_intervals']['price']): # If it's a force update, hasn't been updated, or the interval time has been met.
             current_price, daily_change, prices = get_bitcoin_price()
-            if prices and len(prices) > 0: # If we have price data and it's not empty
+            # Cache the data after fetching
+            if current_price is not None:
+                with open(CACHE_FILE, 'w') as cache_file:
+                    json.dump({
+                        "current_price": current_price,
+                        "daily_change": daily_change,
+                        "prices": prices,
+                        "timestamp": time.time()
+                    }, cache_file)
+        else:
+            # Load from cache when not updating
+            current_price, daily_change, prices = load_price_from_cache()
+        
+        if prices and len(prices) > 0: # If we have price data and it's not empty
                 fig.clear()
                 ax = fig.add_subplot(111)
                 ax.set_facecolor('#202222') # Set the background color # Light gray background
@@ -528,13 +683,10 @@ def update_price_chart(force_update=False):
                     next_update_time = time_until_next_even_hour() * 1000
                     price_timer_id = root.after(int(next_update_time), update_price_chart)  # Capture ID
 
-            else:
-                # If we couldn't get prices, try again in 5 minutes
-                root.after(300000, update_price_chart)
-        except Exception as e:
-            logging.error(f"Error updating price chart: {e}")
-             # If there's an error, try again in 5 minutes
-            root.after(300000, update_price_chart)
+    except Exception as e:
+        logging.error(f"Error updating price chart: {e}")
+         # If there's an error, try again in 5 minutes
+        root.after(300000, update_price_chart)
 def get_node_info(rpc_connection):
     try:
         blockchain_info = rpc_connection.getblockchaininfo()
@@ -709,6 +861,9 @@ except Exception as e: # Catch all other errors here.
 def main():
     global root
     try:
+        # Initialize price cache on startup
+        initialize_price_cache()
+        
         root = create_display()
         update_display() # Start the scheduling loop
         root.mainloop()

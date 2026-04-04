@@ -1,4 +1,3 @@
 bitcoin_env/
 bitcoin_price_cache.json
 bitcoin_display.log
-__pycache__/piDisplay.cpython-310.pyc
