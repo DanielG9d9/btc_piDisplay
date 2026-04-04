@@ -173,11 +173,12 @@ def show_more_screen():
     global current_screen, more_fig, more_canvas, more_ax, canvas, fig, ax    
 
     if current_screen == "more":
+        # ALWAYS RECREATE MAIN SCREEN FRESH - identical to initial state
         more_canvas.get_tk_widget().destroy()
         
-        # Restore the existing chart display and refresh it in place.
-        if ax is None:
-            ax = fig.add_subplot(111)
+        # Completely rebuild main chart from scratch
+        fig.clear()
+        ax = fig.add_subplot(111)
         canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
         
         # Force full refresh of BOTH price chart AND node data
@@ -384,126 +385,54 @@ def get_address_balance(address):
         logging.error(f"Error getting address balance: {e}")
         return 0
 
-
-def load_price_cache():
-    if os.path.exists(CACHE_FILE):
-        with open(CACHE_FILE, 'r') as cache_file:
-            return json.load(cache_file)
-    return None
-
-
-def validate_prices_data(prices):
-    """Validate that prices is a list of [timestamp, price] pairs"""
-    if not isinstance(prices, list):
-        return False
-    for price in prices:
-        if not isinstance(price, list) or len(price) != 2:
-            return False
-        try:
-            float(price[0])
-            float(price[1])
-        except (ValueError, TypeError):
-            return False
-    return True
-    url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
-    response = requests.get(url)
-    response.raise_for_status()
-    current_data = response.json()
-    if not isinstance(current_data, dict) or 'bitcoin' not in current_data or 'usd' not in current_data['bitcoin']:
-        raise ValueError("Invalid response from Coingecko")
-    current_price = current_data["bitcoin"]["usd"]
-
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=1)
-    start_timestamp = int(start_date.timestamp())
-    end_timestamp = int(end_date.timestamp())
-
-    historical_url = (
-        f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range"
-        f"?vs_currency=usd&from={start_timestamp}&to={end_timestamp}"
-    )
-    historical_response = requests.get(historical_url)
-    historical_response.raise_for_status()
-    historical_data = historical_response.json()
-    if not isinstance(historical_data, dict) or 'prices' not in historical_data:
-        raise ValueError("Invalid historical data from Coingecko")
-    prices = historical_data.get('prices', [])
-    
-    # Validate that prices is a list of [timestamp, price] pairs
-    if not isinstance(prices, list):
-        raise ValueError("Prices data is not a list")
-    for i, price in enumerate(prices):
-        if not isinstance(price, list) or len(price) != 2:
-            raise ValueError(f"Price at index {i} is not a valid [timestamp, price] pair: {price}")
-        try:
-            # Ensure timestamp and price are numeric
-            float(price[0])
-            float(price[1])
-        except (ValueError, TypeError):
-            raise ValueError(f"Invalid numeric values in price data at index {i}: {price}")
-    
-    return current_price, prices
-
-
-def fetch_coindesk_price():
-    url = "https://api.coindesk.com/v1/bpi/currentprice/USD.json"
-    response = requests.get(url)
-    response.raise_for_status()
-    current_data = response.json()
-    if not isinstance(current_data, dict) or 'bpi' not in current_data or 'USD' not in current_data['bpi'] or 'rate_float' not in current_data['bpi']['USD']:
-        raise ValueError("Invalid response from Coindesk")
-    return float(current_data['bpi']['USD']['rate_float'])
-
-
 def get_bitcoin_price():
     try:
         if testing:
-            cached_data = load_price_cache()
-            if cached_data:
-                current_price = cached_data["current_price"]
-                daily_change = cached_data["daily_change"]
-                prices = cached_data["prices"]
-                if not validate_prices_data(prices):
-                    logging.warning("Cached prices data is invalid, generating dummy data")
-                    prices = None
-                print("Loaded price data from cache.")
-                # Ensure we have valid prices for testing
-                if not prices or len(prices) == 0:
-                    # Generate dummy prices for testing
-                    import time
-                    now = time.time() * 1000
-                    prices = [[now - i*3600000, current_price - i*10] for i in range(24)]
-                    print("Generated dummy prices for testing.")
-                return current_price, daily_change, prices
+            if os.path.exists(CACHE_FILE): # Check if cache file exists
+                with open(CACHE_FILE, 'r') as cache_file:
+                    cached_data = json.load(cache_file)
+                    current_price = cached_data["current_price"]
+                    daily_change = cached_data["daily_change"]
+                    prices = cached_data["prices"]
+                    print("Loaded price data from cache.")
+                    return current_price, daily_change, prices
+        # Current price
+        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+        response = requests.get(url)
+        response.raise_for_status()
+        current_data = response.json()
+        current_price = current_data["bitcoin"]["usd"]
 
-        try:
-            current_price, prices = fetch_coingecko_price_data()
-        except requests.RequestException as e:
-            logging.warning(f"Coingecko price fetch failed, falling back: {e}")
-            current_price = fetch_coindesk_price()
-            cached_data = load_price_cache()
-            prices = cached_data["prices"] if cached_data and "prices" in cached_data else None
-            if prices and not validate_prices_data(prices):
-                logging.warning("Cached prices data is invalid, setting to None")
-                prices = None
+        # Previous close price (24 hours ago)
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=1)
 
-        if prices and validate_prices_data(prices):
+        # Convert to timestamps
+        start_timestamp = int(start_date.timestamp())
+        end_timestamp = int(end_date.timestamp())
+
+        historical_url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=usd&from={start_timestamp}&to={end_timestamp}"
+        historical_response = requests.get(historical_url)
+        historical_response.raise_for_status()
+        historical_data = historical_response.json()
+        prices = historical_data['prices']
+        
+        if prices:
             previous_close_price = prices[0][1]
             daily_change = (current_price - previous_close_price) / previous_close_price * 100
             daily_change = round(daily_change, 2)
+            if testing:
+                with open(CACHE_FILE, 'w') as cache_file: # Save the fetched data to cache
+                    json.dump({
+                        "current_price": current_price,
+                        "daily_change": daily_change,
+                        "prices": prices
+                    }, cache_file)
+
+                print("Fetched and cached new price data.")
+            return current_price, daily_change, prices
         else:
-            daily_change = None
-
-        if testing and prices is not None:
-            with open(CACHE_FILE, 'w') as cache_file:
-                json.dump({
-                    "current_price": current_price,
-                    "daily_change": daily_change,
-                    "prices": prices
-                }, cache_file)
-            print("Fetched and cached new price data.")
-
-        return current_price, daily_change, prices
+            return current_price, None, None
     except requests.RequestException as e:
         logging.error(f"Error fetching price data: {e}")
         return None, None, None
@@ -515,12 +444,9 @@ def update_price_chart(force_update=False):
     
     current_time = time.time()
     if force_update or last_price_update == 0 or (current_time - last_price_update >= config['update_intervals']['price']): # If it's a force update, hasn't been updated, or the interval time has been met.
-        try:
+        try: 
             current_price, daily_change, prices = get_bitcoin_price()
-            if current_price is None:
-                raise ValueError("Could not fetch current price")
-
-            if prices and len(prices) > 0 and validate_prices_data(prices): # If we have price data and it's not empty and valid
+            if prices and len(prices) > 0: # If we have price data and it's not empty
                 fig.clear()
                 ax = fig.add_subplot(111)
                 ax.set_facecolor('#202222') # Set the background color # Light gray background
@@ -603,41 +529,12 @@ def update_price_chart(force_update=False):
                     price_timer_id = root.after(int(next_update_time), update_price_chart)  # Capture ID
 
             else:
-                # If we couldn't get prices, preserve the current display and show a message.
-                if ax is None:
-                    fig.clear()
-                    ax = fig.add_subplot(111)
-                else:
-                    ax.clear()
-                ax.set_facecolor('#202222')
-                ax.text(
-                    0.5, 0.5,
-                    "Unable to fetch price data.\nRefreshing shortly.",
-                    ha='center', va='center', color='white', fontsize=14,
-                    transform=ax.transAxes
-                )
-                fig.patch.set_facecolor('#191A1A')
-                canvas.draw_idle()
-                if app_running:
-                    root.after(300000, update_price_chart)
+                # If we couldn't get prices, try again in 5 minutes
+                root.after(300000, update_price_chart)
         except Exception as e:
             logging.error(f"Error updating price chart: {e}")
-            if ax is None:
-                fig.clear()
-                ax = fig.add_subplot(111)
-            else:
-                ax.clear()
-            ax.set_facecolor('#202222')
-            ax.text(
-                0.5, 0.5,
-                "Unable to fetch price data.\nRefreshing shortly.",
-                ha='center', va='center', color='white', fontsize=14,
-                transform=ax.transAxes
-            )
-            fig.patch.set_facecolor('#191A1A')
-            canvas.draw_idle()
-            if app_running:
-                root.after(300000, update_price_chart)
+             # If there's an error, try again in 5 minutes
+            root.after(300000, update_price_chart)
 def get_node_info(rpc_connection):
     try:
         blockchain_info = rpc_connection.getblockchaininfo()
