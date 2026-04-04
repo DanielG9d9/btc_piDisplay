@@ -173,12 +173,11 @@ def show_more_screen():
     global current_screen, more_fig, more_canvas, more_ax, canvas, fig, ax    
 
     if current_screen == "more":
-        # ALWAYS RECREATE MAIN SCREEN FRESH - identical to initial state
         more_canvas.get_tk_widget().destroy()
         
-        # Completely rebuild main chart from scratch
-        fig.clear()
-        ax = fig.add_subplot(111)
+        # Restore the existing chart display and refresh it in place.
+        if ax is None:
+            ax = fig.add_subplot(111)
         canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
         
         # Force full refresh of BOTH price chart AND node data
@@ -471,8 +470,11 @@ def update_price_chart(force_update=False):
     
     current_time = time.time()
     if force_update or last_price_update == 0 or (current_time - last_price_update >= config['update_intervals']['price']): # If it's a force update, hasn't been updated, or the interval time has been met.
-        try: 
+        try:
             current_price, daily_change, prices = get_bitcoin_price()
+            if current_price is None:
+                raise ValueError("Could not fetch current price")
+
             if prices and len(prices) > 0: # If we have price data and it's not empty
                 fig.clear()
                 ax = fig.add_subplot(111)
@@ -556,12 +558,41 @@ def update_price_chart(force_update=False):
                     price_timer_id = root.after(int(next_update_time), update_price_chart)  # Capture ID
 
             else:
-                # If we couldn't get prices, try again in 5 minutes
-                root.after(300000, update_price_chart)
+                # If we couldn't get prices, preserve the current display and show a message.
+                if ax is None:
+                    fig.clear()
+                    ax = fig.add_subplot(111)
+                else:
+                    ax.clear()
+                ax.set_facecolor('#202222')
+                ax.text(
+                    0.5, 0.5,
+                    "Unable to fetch price data.\nRefreshing shortly.",
+                    ha='center', va='center', color='white', fontsize=14,
+                    transform=ax.transAxes
+                )
+                fig.patch.set_facecolor('#191A1A')
+                canvas.draw_idle()
+                if app_running:
+                    root.after(300000, update_price_chart)
         except Exception as e:
             logging.error(f"Error updating price chart: {e}")
-             # If there's an error, try again in 5 minutes
-            root.after(300000, update_price_chart)
+            if ax is None:
+                fig.clear()
+                ax = fig.add_subplot(111)
+            else:
+                ax.clear()
+            ax.set_facecolor('#202222')
+            ax.text(
+                0.5, 0.5,
+                "Unable to fetch price data.\nRefreshing shortly.",
+                ha='center', va='center', color='white', fontsize=14,
+                transform=ax.transAxes
+            )
+            fig.patch.set_facecolor('#191A1A')
+            canvas.draw_idle()
+            if app_running:
+                root.after(300000, update_price_chart)
 def get_node_info(rpc_connection):
     try:
         blockchain_info = rpc_connection.getblockchaininfo()
