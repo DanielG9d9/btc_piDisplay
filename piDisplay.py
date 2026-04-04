@@ -580,7 +580,7 @@ def update_price_chart_from_cache():
         canvas.draw_idle()
 
 def update_price_chart(force_update=False):
-    global last_price_update, app_running, fig, canvas, ax
+    global last_price_update, app_running, fig, canvas, ax, root, price_timer_id
     if not app_running:
         return  # Don't do anything if the app is not running
     
@@ -799,7 +799,7 @@ def update_node_table(blockchain_data, network_data, fees):
     return  
 
 def update_blockchain_info(force_update=False):
-    global app_running, root, last_blockchain_update, blockchain_chain, blockchain_blocks, blockchain_verification_progress, node_connections, cpu_temp, previous_chain, previous_network, previous_fees, saved_timestamp
+    global app_running, root, last_blockchain_update, blockchain_chain, blockchain_blocks, blockchain_verification_progress, node_connections, cpu_temp, previous_chain, previous_network, previous_fees, saved_timestamp, blockchain_timer_id
     if not app_running:
         return  # Don't do anything if the app is not running
     # Trying to pass in blockchain and network info to this update function.
