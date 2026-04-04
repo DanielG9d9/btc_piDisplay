@@ -98,6 +98,8 @@ more_fig = None
 more_canvas = None
 more_ax = None
 countdown_label = None
+exit_button = None
+more_button = None
 
 def update_display():
     global app_running
@@ -109,7 +111,7 @@ def update_display():
         display_timer_id = root.after(300000, update_display)
 
 def create_display():
-    global root, fig, canvas, chart_frame
+    global root, fig, canvas, chart_frame, exit_button, more_button, countdown_label
     root = tk.Tk()
     root.title("Bitcoin Node Information")
 
@@ -158,7 +160,7 @@ def create_display():
         root, text="00:00:00", bg='#202222', fg='yellow',
         font=('Arial', 10)
     )
-    countdown_label.place(relx=0.89, rely=0.01, anchor='ne')  # Left of More button
+    countdown_label.place(relx=0.87, rely=0.01, anchor='ne')  # Left of More button
 
     chart_frame = ttk.Frame(root)
     chart_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -355,12 +357,23 @@ def get_timestamp():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 def time_until_next_even_hour(): # Used for price data when updating hourly (3600 seconds)
     now = datetime.now()
-    # If past :00 of even hour, go to next even hour
-    next_hour = now.replace(minute=0, second=0, microsecond=0)
-    if now.hour % 2 == 1:  # Odd hour (1pm, 3pm, etc.)
-        next_hour += timedelta(hours=1)
-    # Always target :00 of even hour
-    return (next_hour - now).total_seconds()
+    current_hour = now.hour
+    # Calculate next even hour
+    if current_hour % 2 == 0:  # Even hour
+        next_hour = current_hour + 2
+    else:  # Odd hour
+        next_hour = current_hour + 1
+    
+    # Handle hour wraparound
+    if next_hour >= 24:
+        next_hour -= 24
+    
+    next_time = now.replace(hour=next_hour, minute=0, second=0, microsecond=0)
+    # If next_time is in the past (shouldn't happen), add another 2 hours
+    if next_time <= now:
+        next_time += timedelta(hours=2)
+    
+    return (next_time - now).total_seconds()
 def time_until_next_10min(): # Used for blockchain data when updating every 10 minutes (600 seconds)
     now = datetime.now()
     minutes = now.minute
