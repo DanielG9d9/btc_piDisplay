@@ -496,7 +496,7 @@ def update_price_chart_from_cache():
         fig.clear()
         ax = fig.add_subplot(111)
         ax.set_facecolor('#202222')
-        fig.subplots_adjust(left=0.08, right=0.98, top=0.92, bottom=0.15)
+        fig.subplots_adjust(left=0.08, right=0.99, top=0.92, bottom=0.15)
         
         dates = [datetime.fromtimestamp(price[0]/1000) for price in prices]
         values = [price[1] for price in prices]
@@ -554,7 +554,7 @@ def update_price_chart_from_cache():
             today_end = today_midnight.replace(hour=23, minute=59, second=59)
             today_end_naive = today_end.replace(tzinfo=None)
             ax.set_xlim(today_midnight_naive, today_end_naive)
-            ax.margins(x=0, y=0.05)
+            ax.margins(x=0.01, y=0.05)  # Small x-padding to prevent clipping
         
         canvas.draw()
         
@@ -605,7 +605,7 @@ def update_price_chart(force_update=False):
                 fig.clear()
                 ax = fig.add_subplot(111)
                 ax.set_facecolor('#202222') # Set the background color # Light gray background
-                fig.subplots_adjust(left=0.08, right=0.98, top=0.92, bottom=0.15) # Fix left margin for y-axis labels
+                fig.subplots_adjust(left=0.08, right=0.99, top=0.92, bottom=0.15) # Fix left margin for y-axis labels
                 
                 dates = [datetime.fromtimestamp(price[0]/1000) for price in prices]
                 values = [price[1] for price in prices]
@@ -668,7 +668,7 @@ def update_price_chart(force_update=False):
                     today_end = today_midnight.replace(hour=23, minute=59, second=59)
                     today_end_naive = today_end.replace(tzinfo=None)
                     ax.set_xlim(today_midnight_naive, today_end_naive)
-                    ax.margins(x=0, y=0.05)  # Zero x-padding, 5% y-margin
+                    ax.margins(x=0.01, y=0.05)  # Small x-padding to prevent clipping
                 canvas.draw()
                 
                 # Redraw node info if available
