@@ -273,22 +273,9 @@ def update_more_metrics():
         (left_x, 0.85 - 7 * y_step, f"Address Balance: {address_balance:.3f} BTC (${usd_value:,.0f})", 'yellow'),
     ]
 
-    extra_labels = [
-        (right_x, 0.85, f"Chain: {chain_name}", 'cyan'),
-        (right_x, 0.85 - y_step, f"Sync Progress: {sync_progress:.2f}%", 'cyan'),
-        (right_x, 0.85 - 2 * y_step, f"Difficulty: {difficulty_text}", 'cyan'),
-        (right_x, 0.85 - 3 * y_step, f"Conn In/Out: {connections_in}/{connections_out}", 'cyan'),
-        (right_x, 0.85 - 4 * y_step, "Placeholder: Extra metric", 'cyan'),
-        (right_x, 0.85 - 5 * y_step, "Placeholder: More info", 'cyan'),
-        (right_x, 0.85 - 6 * y_step, "Placeholder: More info", 'cyan'),
-    ]
-
     for x, y, text, color in labels:
         if text:
             more_ax.text(x, y, text, transform=more_ax.transAxes, color=color, fontsize=12)
-
-    for x, y, text, color in extra_labels:
-        more_ax.text(x, y, text, transform=more_ax.transAxes, color=color, fontsize=12)
 
     more_ax.axis('off')
     more_fig.tight_layout()
