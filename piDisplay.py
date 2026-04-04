@@ -179,7 +179,6 @@ def show_more_screen():
         # Completely rebuild main chart from scratch
         fig.clear()
         ax = fig.add_subplot(111)
-        canvas.draw()
         canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
         
         # Force full refresh of BOTH price chart AND node data
@@ -213,11 +212,69 @@ def update_more_metrics():
     more_ax.clear()
     more_ax.set_facecolor('#202222')
     
-    # Example node metrics (replace with real RPC calls)
-    more_ax.text(0.1, 0.9, "NODE METRICS", transform=more_ax.transAxes, 
+    # Fetch data
+    if testing:
+        print("Using dummy data for testing")
+        # Dummy data for testing
+        blockchain_info = {'blocks': 800000}
+        network_info = {'connections': 10}
+        fees = [10, 20, 30]
+        current_price = 50000
+        high_24h = 51000
+        low_24h = 49000
+        address_balance = 1.0
+        last_update = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    else:
+        try:
+            blockchain_info, network_info, fees = get_node_info(rpc_connection)
+            current_price, _, prices = get_bitcoin_price()
+            if prices:
+                high_24h = max(p[1] for p in prices)
+                low_24h = min(p[1] for p in prices)
+            else:
+                high_24h = low_24h = current_price
+            address_balance = get_address_balance('1FpaYV2cTk1W7WtHhsRP2kuNtKynNbeGoH')
+            last_update = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        except Exception as e:
+            logging.error(f"Error fetching data for more metrics: {e}")
+            blockchain_info = network_info = fees = None
+            current_price = high_24h = low_24h = address_balance = 0
+            last_update = "Error"
+    
+    # Display metrics
+    more_ax.text(0.1, 0.95, "NODE METRICS", transform=more_ax.transAxes, 
                 color='white', fontsize=16, weight='bold')
-    more_ax.text(0.1, 0.7, f"Peers: {rpc_connection.getnetworkinfo().get('connections', 0)}", 
+    
+    y_pos = 0.85
+    more_ax.text(0.1, y_pos, f"Last Update: {last_update}", 
                 transform=more_ax.transAxes, color='cyan', fontsize=12)
+    y_pos -= 0.08
+    more_ax.text(0.1, y_pos, f"Peers: {network_info.get('connections', 0) if network_info else 0}", 
+                transform=more_ax.transAxes, color='cyan', fontsize=12)
+    y_pos -= 0.08
+    more_ax.text(0.1, y_pos, f"Latest Block: {blockchain_info.get('blocks', 0) if blockchain_info else 0}", 
+                transform=more_ax.transAxes, color='cyan', fontsize=12)
+    y_pos -= 0.08
+    if fees:
+        # Convert fees to USD using current price (assuming 1 sat/vB = 0.00000001 BTC)
+        fee_rates_usd = [fee * 0.00000001 * current_price for fee in fees]
+        more_ax.text(0.1, y_pos, f"Fee Rates (sat/vB): L:{fees[0]} M:{fees[1]} H:{fees[2]}", 
+                    transform=more_ax.transAxes, color='cyan', fontsize=12)
+        more_ax.text(0.1, y_pos - 0.08, f"Fee Rates (USD): L:${fee_rates_usd[0]:,.2f} M:${fee_rates_usd[1]:,.2f} H:${fee_rates_usd[2]:,.2f}", 
+                    transform=more_ax.transAxes, color='cyan', fontsize=12)
+    else:
+        more_ax.text(0.1, y_pos, "Fee Rates: N/A", 
+                    transform=more_ax.transAxes, color='cyan', fontsize=12)
+    y_pos -= 0.08
+    more_ax.text(0.1, y_pos, f"24h High: ${high_24h:,.0f}", 
+                transform=more_ax.transAxes, color='green', fontsize=12)
+    y_pos -= 0.08
+    more_ax.text(0.1, y_pos, f"24h Low: ${low_24h:,.0f}", 
+                transform=more_ax.transAxes, color='red', fontsize=12)
+    y_pos -= 0.08
+    usd_value = address_balance * current_price
+    more_ax.text(0.1, y_pos, f"Address Balance: {address_balance:.8f} BTC (${usd_value:,.0f})", 
+                transform=more_ax.transAxes, color='yellow', fontsize=12)
     
     more_ax.axis('off')
     more_fig.tight_layout()
@@ -313,6 +370,20 @@ def get_fee_estimates(rpc_connection):
     except Exception as e:
         logging.error(f"Error getting fee estimates: {e}")
         return None, None, None
+
+def get_address_balance(address):
+    try:
+        url = f"https://api.blockcypher.com/v1/btc/main/addrs/{address}/balance"
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        balance_sat = data['balance']
+        balance_btc = balance_sat / 100000000
+        return balance_btc
+    except Exception as e:
+        logging.error(f"Error getting address balance: {e}")
+        return 0
+
 def get_bitcoin_price():
     try:
         if testing:
@@ -411,27 +482,6 @@ def update_price_chart(force_update=False):
                     title_color = 'red'
                 # ax.set_xlabel("Time", color='white') # Do we really need this?
                 # ax.set_ylabel("Price (USD)", color='white') # Leaving incase someone does!
-                
-                # Add timestamp
-                #TODO Neither are working.
-                if time_series == "standard":
-                    timestamp = datetime.now().strftime('%-I:%M %p')
-                    # timestamp = datetime.now().strftime('%#I:%M %p')
-                else:
-                    timestamp = datetime.now().strftime("%m/%d/%Y - %H:%M") 
-                # anchored_time = AnchoredText(timestamp, loc=2, prop=dict(color='white', size=10), frameon=False)
-                # ax.add_artist(anchored_time) # Moving below so I can use one single legend
-           
-                # Getting price values (use filtered data)
-                price_values = plot_values
-                if len(price_values) > 0:
-                    high_price, low_price = max(price_values), min(price_values)
-                    formatted_high_price = "${:,.0f}".format(high_price)
-                    formatted_low_price = "${:,.0f}".format(low_price)
-                else:
-                # No data today yet - use current price as fallback
-                    high_price = low_price = current_price
-                    formatted_high_price = formatted_low_price = f"${current_price:,.0f}"
 
                 # Change axis colors to white
                 #TODO: Chang these to change with the title color based on positive or negative change.
