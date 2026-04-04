@@ -242,40 +242,54 @@ def update_more_metrics():
             last_update = "Error"
     
     # Display metrics
-    more_ax.text(0.1, 0.95, "NODE METRICS", transform=more_ax.transAxes, 
+    more_ax.text(0.1, 0.95, "NODE METRICS", transform=more_ax.transAxes,
                 color='white', fontsize=16, weight='bold')
     
-    y_pos = 0.85
-    more_ax.text(0.1, y_pos, f"Last Update: {last_update}", 
-                transform=more_ax.transAxes, color='cyan', fontsize=12)
-    y_pos -= 0.08
-    more_ax.text(0.1, y_pos, f"Peers: {network_info.get('connections', 0) if network_info else 0}", 
-                transform=more_ax.transAxes, color='cyan', fontsize=12)
-    y_pos -= 0.08
-    more_ax.text(0.1, y_pos, f"Latest Block: {blockchain_info.get('blocks', 0) if blockchain_info else 0}", 
-                transform=more_ax.transAxes, color='cyan', fontsize=12)
-    y_pos -= 0.08
+    chain_name = blockchain_info.get('chain', 'unknown') if blockchain_info else 'unknown'
+    sync_progress = blockchain_info.get('verificationprogress', 0) * 100 if blockchain_info else 0
+    difficulty = blockchain_info.get('difficulty', 0) if blockchain_info else 0
+    difficulty_text = format_difficulty(difficulty)
+    connections_in = network_info.get('connections_in', 0) if network_info else 0
+    connections_out = network_info.get('connections_out', 0) if network_info else 0
+    total_connections = network_info.get('connections', 0) if network_info else 0
+    latest_block = blockchain_info.get('blocks', 0) if blockchain_info else 0
+    fee_rates_usd = [0, 0, 0]
     if fees:
-        # Convert fees to USD using current price (assuming 1 sat/vB = 0.00000001 BTC)
         fee_rates_usd = [fee * 0.00000001 * current_price for fee in fees]
-        more_ax.text(0.1, y_pos, f"Fee Rates (sat/vB): L:{fees[0]} M:{fees[1]} H:{fees[2]}", 
-                    transform=more_ax.transAxes, color='cyan', fontsize=12)
-        more_ax.text(0.1, y_pos - 0.08, f"Fee Rates (USD): L:${fee_rates_usd[0]:,.2f} M:${fee_rates_usd[1]:,.2f} H:${fee_rates_usd[2]:,.2f}", 
-                    transform=more_ax.transAxes, color='cyan', fontsize=12)
-    else:
-        more_ax.text(0.1, y_pos, "Fee Rates: N/A", 
-                    transform=more_ax.transAxes, color='cyan', fontsize=12)
-    y_pos -= 0.08
-    more_ax.text(0.1, y_pos, f"24h High: ${high_24h:,.0f}", 
-                transform=more_ax.transAxes, color='green', fontsize=12)
-    y_pos -= 0.08
-    more_ax.text(0.1, y_pos, f"24h Low: ${low_24h:,.0f}", 
-                transform=more_ax.transAxes, color='red', fontsize=12)
-    y_pos -= 0.08
     usd_value = address_balance * current_price
-    more_ax.text(0.1, y_pos, f"Address Balance: {address_balance:.8f} BTC (${usd_value:,.0f})", 
-                transform=more_ax.transAxes, color='yellow', fontsize=12)
-    
+
+    left_x = 0.1
+    right_x = 0.55
+    y_step = 0.08
+
+    labels = [
+        (left_x, 0.85, f"Last Update: {last_update}", 'cyan'),
+        (left_x, 0.85 - y_step, f"Peers: {total_connections}", 'cyan'),
+        (left_x, 0.85 - 2 * y_step, f"Latest Block: {latest_block:,}", 'cyan'),
+        (left_x, 0.85 - 3 * y_step, f"Fee Rates (sat/vB): L:{fees[0]} M:{fees[1]} H:{fees[2]}" if fees else "Fee Rates: N/A", 'cyan'),
+        (left_x, 0.85 - 4 * y_step, f"Fee Rates (USD): L:${fee_rates_usd[0]:,.2f} M:${fee_rates_usd[1]:,.2f} H:${fee_rates_usd[2]:,.2f}" if fees else "", 'cyan'),
+        (left_x, 0.85 - 5 * y_step, f"24h High: ${high_24h:,.0f}", 'green'),
+        (left_x, 0.85 - 6 * y_step, f"24h Low: ${low_24h:,.0f}", 'red'),
+        (left_x, 0.85 - 7 * y_step, f"Address Balance: {address_balance:.3f} BTC (${usd_value:,.0f})", 'yellow'),
+    ]
+
+    extra_labels = [
+        (right_x, 0.85, f"Chain: {chain_name}", 'cyan'),
+        (right_x, 0.85 - y_step, f"Sync Progress: {sync_progress:.2f}%", 'cyan'),
+        (right_x, 0.85 - 2 * y_step, f"Difficulty: {difficulty_text}", 'cyan'),
+        (right_x, 0.85 - 3 * y_step, f"Conn In/Out: {connections_in}/{connections_out}", 'cyan'),
+        (right_x, 0.85 - 4 * y_step, "Placeholder: Extra metric", 'cyan'),
+        (right_x, 0.85 - 5 * y_step, "Placeholder: More info", 'cyan'),
+        (right_x, 0.85 - 6 * y_step, "Placeholder: More info", 'cyan'),
+    ]
+
+    for x, y, text, color in labels:
+        if text:
+            more_ax.text(x, y, text, transform=more_ax.transAxes, color=color, fontsize=12)
+
+    for x, y, text, color in extra_labels:
+        more_ax.text(x, y, text, transform=more_ax.transAxes, color=color, fontsize=12)
+
     more_ax.axis('off')
     more_fig.tight_layout()
     more_canvas.draw()
