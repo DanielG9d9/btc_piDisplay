@@ -157,7 +157,7 @@ def create_display():
     # Countdown label next to More button
     global countdown_label
     countdown_label = tk.Label(
-        root, text="00:00:00", bg='#202222', fg='yellow',
+        root, text="00:00", bg='#202222', fg='yellow',
         font=('Arial', 10)
     )
     countdown_label.place(relx=0.87, rely=0.01, anchor='ne')  # Left of More button
@@ -393,12 +393,11 @@ def update_countdown():
         # Calculate time until next even hour (price update)
         seconds_remaining = time_until_next_even_hour()
         
-        # Format as HH:MM:SS
-        hours = int(seconds_remaining // 3600)
-        minutes = int((seconds_remaining % 3600) // 60)
-        seconds = int(seconds_remaining % 60)
+        # Format as MM:SS (max is 1 hour)
+        minutes = int(seconds_remaining // 60)
+        secs = int(seconds_remaining % 60)
         
-        countdown_text = "02d"
+        countdown_text = f"{minutes:02d}:{secs:02d}"
         
         countdown_label.config(text=countdown_text)
         
@@ -407,7 +406,7 @@ def update_countdown():
             root.after(1000, update_countdown)
     except Exception as e:
         logging.error(f"Error updating countdown: {e}")
-        countdown_label.config(text="--:--:--")
+        countdown_label.config(text="--:--")
 
 def get_fee_estimates(rpc_connection):
     try:
