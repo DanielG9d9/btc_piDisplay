@@ -156,8 +156,18 @@ def create_display():
 
     # Countdown label next to More button
     global countdown_label
+    
+    # Calculate initial countdown
+    try:
+        initial_seconds = time_until_next_even_hour()
+        initial_minutes = int(initial_seconds // 60)
+        initial_secs = int(initial_seconds % 60)
+        initial_text = f"{initial_minutes:02d}:{initial_secs:02d}"
+    except:
+        initial_text = "00:00"
+    
     countdown_label = tk.Label(
-        root, text="00:00", bg='#202222', fg='yellow',
+        root, text=initial_text, bg='#202222', fg='yellow',
         font=('Arial', 10)
     )
     countdown_label.place(relx=0.87, rely=0.01, anchor='ne')  # Left of More button
@@ -386,7 +396,8 @@ def time_until_next_10min(): # Used for blockchain data when updating every 10 m
 def update_countdown():
     """Update the countdown label with time until next price update"""
     global countdown_label, app_running, root
-    if not app_running or countdown_label is None:
+    
+    if countdown_label is None or root is None:
         return
     
     try:
@@ -398,7 +409,6 @@ def update_countdown():
         secs = int(seconds_remaining % 60)
         
         countdown_text = f"{minutes:02d}:{secs:02d}"
-        
         countdown_label.config(text=countdown_text)
         
         # Update every second
@@ -406,7 +416,10 @@ def update_countdown():
             root.after(1000, update_countdown)
     except Exception as e:
         logging.error(f"Error updating countdown: {e}")
-        countdown_label.config(text="--:--")
+        try:
+            countdown_label.config(text="--:--")
+        except:
+            pass
 
 def get_fee_estimates(rpc_connection):
     try:
@@ -919,7 +932,10 @@ def main():
         
         root = create_display()
         update_display() # Start the scheduling loop
-        update_countdown() # Start the countdown timer
+        
+        # Schedule countdown to start after GUI is ready
+        root.after(500, update_countdown)
+        
         root.mainloop()
     except tk.TclError as e:
         logging.error(
