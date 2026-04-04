@@ -392,7 +392,19 @@ def load_price_cache():
     return None
 
 
-def fetch_coingecko_price_data():
+def validate_prices_data(prices):
+    """Validate that prices is a list of [timestamp, price] pairs"""
+    if not isinstance(prices, list):
+        return False
+    for price in prices:
+        if not isinstance(price, list) or len(price) != 2:
+            return False
+        try:
+            float(price[0])
+            float(price[1])
+        except (ValueError, TypeError):
+            return False
+    return True
     url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
     response = requests.get(url)
     response.raise_for_status()
@@ -416,6 +428,20 @@ def fetch_coingecko_price_data():
     if not isinstance(historical_data, dict) or 'prices' not in historical_data:
         raise ValueError("Invalid historical data from Coingecko")
     prices = historical_data.get('prices', [])
+    
+    # Validate that prices is a list of [timestamp, price] pairs
+    if not isinstance(prices, list):
+        raise ValueError("Prices data is not a list")
+    for i, price in enumerate(prices):
+        if not isinstance(price, list) or len(price) != 2:
+            raise ValueError(f"Price at index {i} is not a valid [timestamp, price] pair: {price}")
+        try:
+            # Ensure timestamp and price are numeric
+            float(price[0])
+            float(price[1])
+        except (ValueError, TypeError):
+            raise ValueError(f"Invalid numeric values in price data at index {i}: {price}")
+    
     return current_price, prices
 
 
@@ -437,6 +463,9 @@ def get_bitcoin_price():
                 current_price = cached_data["current_price"]
                 daily_change = cached_data["daily_change"]
                 prices = cached_data["prices"]
+                if not validate_prices_data(prices):
+                    logging.warning("Cached prices data is invalid, generating dummy data")
+                    prices = None
                 print("Loaded price data from cache.")
                 # Ensure we have valid prices for testing
                 if not prices or len(prices) == 0:
@@ -454,8 +483,11 @@ def get_bitcoin_price():
             current_price = fetch_coindesk_price()
             cached_data = load_price_cache()
             prices = cached_data["prices"] if cached_data and "prices" in cached_data else None
+            if prices and not validate_prices_data(prices):
+                logging.warning("Cached prices data is invalid, setting to None")
+                prices = None
 
-        if prices:
+        if prices and validate_prices_data(prices):
             previous_close_price = prices[0][1]
             daily_change = (current_price - previous_close_price) / previous_close_price * 100
             daily_change = round(daily_change, 2)
@@ -488,7 +520,7 @@ def update_price_chart(force_update=False):
             if current_price is None:
                 raise ValueError("Could not fetch current price")
 
-            if prices and len(prices) > 0: # If we have price data and it's not empty
+            if prices and len(prices) > 0 and validate_prices_data(prices): # If we have price data and it's not empty and valid
                 fig.clear()
                 ax = fig.add_subplot(111)
                 ax.set_facecolor('#202222') # Set the background color # Light gray background
