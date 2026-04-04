@@ -394,7 +394,7 @@ def time_until_next_10min(): # Used for blockchain data when updating every 10 m
     target_time = now.replace(minute=next_10min, second=0, microsecond=0)
     return (target_time - now).total_seconds()
 def update_countdown():
-    """Update the countdown label with time until next price update"""
+    """Update the countdown label with time until next price update (updates 10x per second for smooth animation)"""
     global countdown_label, app_running, root
     
     if countdown_label is None or root is None:
@@ -411,9 +411,9 @@ def update_countdown():
         countdown_text = f"{minutes:02d}:{secs:02d}"
         countdown_label.config(text=countdown_text)
         
-        # Update every second
+        # Update 10 times per second for smooth real-time countdown (every 100ms)
         if app_running:
-            root.after(1000, update_countdown)
+            root.after(100, update_countdown)
     except Exception as e:
         logging.error(f"Error updating countdown: {e}")
         try:
