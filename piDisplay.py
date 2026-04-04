@@ -385,54 +385,81 @@ def get_address_balance(address):
         logging.error(f"Error getting address balance: {e}")
         return 0
 
+
+def load_price_cache():
+    if os.path.exists(CACHE_FILE):
+        with open(CACHE_FILE, 'r') as cache_file:
+            return json.load(cache_file)
+    return None
+
+
+def fetch_coingecko_price_data():
+    url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
+    response = requests.get(url)
+    response.raise_for_status()
+    current_data = response.json()
+    current_price = current_data["bitcoin"]["usd"]
+
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=1)
+    start_timestamp = int(start_date.timestamp())
+    end_timestamp = int(end_date.timestamp())
+
+    historical_url = (
+        f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range"
+        f"?vs_currency=usd&from={start_timestamp}&to={end_timestamp}"
+    )
+    historical_response = requests.get(historical_url)
+    historical_response.raise_for_status()
+    historical_data = historical_response.json()
+    prices = historical_data.get('prices', [])
+    return current_price, prices
+
+
+def fetch_coindesk_price():
+    url = "https://api.coindesk.com/v1/bpi/currentprice/USD.json"
+    response = requests.get(url)
+    response.raise_for_status()
+    current_data = response.json()
+    return float(current_data['bpi']['USD']['rate_float'])
+
+
 def get_bitcoin_price():
     try:
         if testing:
-            if os.path.exists(CACHE_FILE): # Check if cache file exists
-                with open(CACHE_FILE, 'r') as cache_file:
-                    cached_data = json.load(cache_file)
-                    current_price = cached_data["current_price"]
-                    daily_change = cached_data["daily_change"]
-                    prices = cached_data["prices"]
-                    print("Loaded price data from cache.")
-                    return current_price, daily_change, prices
-        # Current price
-        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
-        response = requests.get(url)
-        response.raise_for_status()
-        current_data = response.json()
-        current_price = current_data["bitcoin"]["usd"]
+            cached_data = load_price_cache()
+            if cached_data:
+                current_price = cached_data["current_price"]
+                daily_change = cached_data["daily_change"]
+                prices = cached_data["prices"]
+                print("Loaded price data from cache.")
+                return current_price, daily_change, prices
 
-        # Previous close price (24 hours ago)
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=1)
+        try:
+            current_price, prices = fetch_coingecko_price_data()
+        except requests.RequestException as e:
+            logging.warning(f"Coingecko price fetch failed, falling back: {e}")
+            current_price = fetch_coindesk_price()
+            cached_data = load_price_cache()
+            prices = cached_data["prices"] if cached_data and "prices" in cached_data else None
 
-        # Convert to timestamps
-        start_timestamp = int(start_date.timestamp())
-        end_timestamp = int(end_date.timestamp())
-
-        historical_url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=usd&from={start_timestamp}&to={end_timestamp}"
-        historical_response = requests.get(historical_url)
-        historical_response.raise_for_status()
-        historical_data = historical_response.json()
-        prices = historical_data['prices']
-        
         if prices:
             previous_close_price = prices[0][1]
             daily_change = (current_price - previous_close_price) / previous_close_price * 100
             daily_change = round(daily_change, 2)
-            if testing:
-                with open(CACHE_FILE, 'w') as cache_file: # Save the fetched data to cache
-                    json.dump({
-                        "current_price": current_price,
-                        "daily_change": daily_change,
-                        "prices": prices
-                    }, cache_file)
-
-                print("Fetched and cached new price data.")
-            return current_price, daily_change, prices
         else:
-            return current_price, None, None
+            daily_change = None
+
+        if testing and prices is not None:
+            with open(CACHE_FILE, 'w') as cache_file:
+                json.dump({
+                    "current_price": current_price,
+                    "daily_change": daily_change,
+                    "prices": prices
+                }, cache_file)
+            print("Fetched and cached new price data.")
+
+        return current_price, daily_change, prices
     except requests.RequestException as e:
         logging.error(f"Error fetching price data: {e}")
         return None, None, None
