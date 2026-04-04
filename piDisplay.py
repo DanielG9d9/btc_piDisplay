@@ -97,6 +97,7 @@ chart_frame = None
 more_fig = None
 more_canvas = None
 more_ax = None
+countdown_label = None
 
 def update_display():
     global app_running
@@ -151,6 +152,14 @@ def create_display():
     )
     more_button.place(relx=0.95, rely=0.01, anchor='ne')  # Slightly left of Exit
 
+    # Countdown label next to More button
+    global countdown_label
+    countdown_label = tk.Label(
+        root, text="00:00:00", bg='#202222', fg='yellow',
+        font=('Arial', 10)
+    )
+    countdown_label.place(relx=0.89, rely=0.01, anchor='ne')  # Left of More button
+
     chart_frame = ttk.Frame(root)
     chart_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
@@ -166,6 +175,7 @@ def create_display():
 
     exit_button.lift()
     more_button.lift()
+    countdown_label.lift()
     return root
 
 
@@ -184,6 +194,11 @@ def show_more_screen():
         # Load from cache instead of forcing update
         update_price_chart_from_cache()
         update_blockchain_info(force_update=True)
+        
+        # Ensure UI elements are visible
+        exit_button.lift()
+        more_button.lift()
+        countdown_label.lift()
         
         current_screen = "main"
         return
@@ -355,6 +370,32 @@ def time_until_next_10min(): # Used for blockchain data when updating every 10 m
         now += timedelta(hours=1)
     target_time = now.replace(minute=next_10min, second=0, microsecond=0)
     return (target_time - now).total_seconds()
+def update_countdown():
+    """Update the countdown label with time until next price update"""
+    global countdown_label, app_running, root
+    if not app_running or countdown_label is None:
+        return
+    
+    try:
+        # Calculate time until next even hour (price update)
+        seconds_remaining = time_until_next_even_hour()
+        
+        # Format as HH:MM:SS
+        hours = int(seconds_remaining // 3600)
+        minutes = int((seconds_remaining % 3600) // 60)
+        seconds = int(seconds_remaining % 60)
+        
+        countdown_text = "02d"
+        
+        countdown_label.config(text=countdown_text)
+        
+        # Update every second
+        if app_running:
+            root.after(1000, update_countdown)
+    except Exception as e:
+        logging.error(f"Error updating countdown: {e}")
+        countdown_label.config(text="--:--:--")
+
 def get_fee_estimates(rpc_connection):
     try:
         # Get fee estimates for 1, 6, and 144 blocks (high, medium, low priority)
@@ -866,6 +907,7 @@ def main():
         
         root = create_display()
         update_display() # Start the scheduling loop
+        update_countdown() # Start the countdown timer
         root.mainloop()
     except tk.TclError as e:
         logging.error(
