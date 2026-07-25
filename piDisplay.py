@@ -132,6 +132,15 @@ SETTINGS_LABELS = {
     'color_scheme_interval': 'Interval',
 }
 
+# Display Settings pop-up sizing. Everything is derived from this scale so the
+# window stays proportional — it's a touch target on the Pi's small screen,
+# so text and dropdowns are deliberately oversized rather than desktop-sized.
+SETTINGS_SCALE = 2
+SETTINGS_HEADING_FONT = ('Segoe UI', 11 * SETTINGS_SCALE, 'bold')
+SETTINGS_FONT = ('Segoe UI', 10 * SETTINGS_SCALE)
+SETTINGS_PAD = 4 * SETTINGS_SCALE
+SETTINGS_ARROW_SIZE = 14 * SETTINGS_SCALE
+
 PALETTE = {
     'page': '#0d0d0d',
     'surface': '#1a1a19',
@@ -269,17 +278,23 @@ def create_display():
     chart_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
     # Dark-themed combobox style for the Options window's settings controls.
+    # Sized for touch: the font, cell padding and arrow are all scaled so the
+    # dropdowns are big enough to hit with a fingertip, not just a mouse.
     style = ttk.Style()
     style.theme_use('clam')
     style.configure('Dark.TCombobox',
         fieldbackground=PALETTE['surface'], background=PALETTE['surface'],
         foreground=PALETTE['primary'], arrowcolor=PALETTE['secondary'],
         bordercolor=PALETTE['baseline'], lightcolor=PALETTE['surface'], darkcolor=PALETTE['surface'],
+        font=SETTINGS_FONT, padding=SETTINGS_PAD, arrowsize=SETTINGS_ARROW_SIZE,
     )
     style.map('Dark.TCombobox',
         fieldbackground=[('readonly', PALETTE['surface'])],
         foreground=[('readonly', PALETTE['primary'])],
     )
+    # The dropdown list is a classic Tk listbox, so its row height comes from
+    # the option database rather than the ttk style.
+    root.option_add('*TCombobox*Listbox.font', SETTINGS_FONT)
     root.option_add('*TCombobox*Listbox.background', PALETTE['surface'])
     root.option_add('*TCombobox*Listbox.foreground', PALETTE['primary'])
     root.option_add('*TCombobox*Listbox.selectBackground', PALETTE['accent'])
@@ -376,42 +391,43 @@ def show_settings_window():
         settings_window.config(cursor="none")
         container = tk.Frame(
             settings_window, bg=PALETTE['surface'],
-            highlightbackground=PALETTE['baseline'], highlightthickness=1
+            highlightbackground=PALETTE['baseline'], highlightthickness=SETTINGS_SCALE
         )
     else:
         settings_window.resizable(False, False)
         container = tk.Frame(settings_window, bg=PALETTE['surface'])
     container.pack(fill=tk.BOTH, expand=True)
 
+    s = SETTINGS_SCALE
     heading = tk.Label(
         container, text="DISPLAY SETTINGS", bg=PALETTE['surface'], fg=PALETTE['primary'],
-        font=('Segoe UI', 11, 'bold'), anchor='w'
+        font=SETTINGS_HEADING_FONT, anchor='w'
     )
-    heading.grid(row=0, column=0, columnspan=2, sticky='w', padx=14, pady=(12, 8))
+    heading.grid(row=0, column=0, columnspan=2, sticky='w', padx=14 * s, pady=(12 * s, 8 * s))
 
     keys = ('viewing_mode', 'color_scheme', 'chart_type', 'color_scheme_interval')
     for i, key in enumerate(keys, start=1):
         label = tk.Label(
             container, text=SETTINGS_LABELS[key], bg=PALETTE['surface'], fg=PALETTE['secondary'],
-            font=('Segoe UI', 10), anchor='w'
+            font=SETTINGS_FONT, anchor='w'
         )
-        label.grid(row=i, column=0, sticky='w', padx=(14, 6), pady=4)
+        label.grid(row=i, column=0, sticky='w', padx=(14 * s, 6 * s), pady=4 * s)
 
         var = tk.StringVar(value=globals()[key])
         combo = ttk.Combobox(
             container, textvariable=var, values=SETTINGS_OPTIONS[key],
-            state='readonly', width=12, style='Dark.TCombobox'
+            state='readonly', width=12, style='Dark.TCombobox', font=SETTINGS_FONT
         )
-        combo.grid(row=i, column=1, padx=(0, 14), pady=4)
+        combo.grid(row=i, column=1, sticky='ew', padx=(0, 14 * s), pady=4 * s)
         combo.bind('<<ComboboxSelected>>', lambda event, k=key, v=var: apply_setting_change(k, v.get()))
 
     close_button = tk.Button(
         container, text="Close", command=close_settings_window,
         bg=PALETTE['surface'], fg=PALETTE['secondary'], bd=0, highlightthickness=0,
         activebackground=PALETTE['page'], activeforeground=PALETTE['primary'],
-        font=('Segoe UI', 10), padx=10, pady=4,
+        font=SETTINGS_FONT, padx=10 * s, pady=4 * s,
     )
-    close_button.grid(row=len(keys) + 1, column=0, columnspan=2, sticky='e', padx=14, pady=(10, 12))
+    close_button.grid(row=len(keys) + 1, column=0, columnspan=2, sticky='e', padx=14 * s, pady=(10 * s, 12 * s))
 
     settings_window.bind('<Escape>', lambda event: close_settings_window())
 
