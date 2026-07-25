@@ -115,8 +115,9 @@ more_ax = None
 countdown_label = None
 exit_button = None
 more_button = None
+options_button = None
 toolbar_frame = None
-settings_frame = None
+settings_window = None
 
 SETTINGS_OPTIONS = {
     'viewing_mode': ['static', 'rolling'],
@@ -187,7 +188,7 @@ def update_display():
         display_timer_id = root.after(300000, update_display)
 
 def create_display():
-    global root, fig, canvas, chart_frame, exit_button, more_button, countdown_label, toolbar_frame
+    global root, fig, canvas, chart_frame, exit_button, more_button, options_button, countdown_label, toolbar_frame
     root = tk.Tk()
     root.title("Bitcoin Node Information")
 
@@ -224,7 +225,7 @@ def create_display():
     except:
         initial_text = "00:00"
 
-    # Single toolbar frame so the countdown/More/Exit controls share one
+    # Single toolbar frame so the countdown/Node/Options/Exit controls share one
     # baseline and consistent spacing instead of being independently
     # placed by relx (which drifts out of alignment as widget widths differ).
     global toolbar_frame
@@ -244,11 +245,18 @@ def create_display():
     countdown_label.pack(side=tk.LEFT)
 
     more_button = tk.Button(
-        toolbar_frame, text="More", command=show_more_screen,
+        toolbar_frame, text="Node", command=show_more_screen,
         fg=PALETTE['accent'], activeforeground=PALETTE['accent'],
         **button_style
     )
     more_button.pack(side=tk.LEFT)
+
+    options_button = tk.Button(
+        toolbar_frame, text="Options", command=show_settings_window,
+        fg=PALETTE['accent'], activeforeground=PALETTE['accent'],
+        **button_style
+    )
+    options_button.pack(side=tk.LEFT)
 
     exit_button = tk.Button(
         toolbar_frame, text="Exit", command=proper_exit,
@@ -260,7 +268,7 @@ def create_display():
     chart_frame = ttk.Frame(root)
     chart_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
-    # Dark-themed combobox style for the More screen's settings controls.
+    # Dark-themed combobox style for the Options window's settings controls.
     style = ttk.Style()
     style.theme_use('clam')
     style.configure('Dark.TCombobox',
@@ -292,13 +300,11 @@ def create_display():
 
 
 def show_more_screen():
-    global current_screen, more_fig, more_canvas, more_ax, canvas, fig, ax, settings_frame
+    global current_screen, more_fig, more_canvas, more_ax, canvas, fig, ax
 
     if current_screen == "more":
         # ALWAYS RECREATE MAIN SCREEN FRESH - identical to initial state
         more_canvas.get_tk_widget().destroy()
-        settings_frame.destroy()
-        settings_frame = None
 
         # Completely rebuild main chart from scratch
         fig.clear()
@@ -335,46 +341,89 @@ def show_more_screen():
     more_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
 
     update_more_metrics()
-    build_settings_panel()
 
-def build_settings_panel():
-    """Build the More screen's display-settings controls (viewing mode,
-    color scheme, chart type, color scheme interval). Changes apply
-    immediately and persist to config.json."""
-    global settings_frame
+def close_settings_window():
+    """Tear down the Display Settings pop-up if it's open."""
+    global settings_window
+    if settings_window is not None:
+        try:
+            settings_window.destroy()
+        except tk.TclError:
+            pass
+        settings_window = None
 
-    settings_frame = tk.Frame(
-        chart_frame, bg=PALETTE['surface'],
-        highlightbackground=PALETTE['baseline'], highlightthickness=1
-    )
-    # Anchored below the toolbar (More/Exit/countdown), same right margin,
-    # with enough clearance that it never sits behind those controls.
-    settings_frame.place(relx=1.0, rely=0.0, anchor='ne', x=-10, y=48)
+def show_settings_window():
+    """Open the Display Settings pop-up (viewing mode, color scheme, chart type,
+    color scheme interval) over whichever screen is showing. Changes apply
+    immediately and persist to config.json. Clicking Options again closes it."""
+    global settings_window
+
+    if settings_window is not None:
+        # Already open — the Options button toggles it shut.
+        close_settings_window()
+        return
+
+    settings_window = tk.Toplevel(root)
+    settings_window.title("Display Settings")
+    settings_window.configure(bg=PALETTE['surface'])
+    settings_window.transient(root)
+    settings_window.protocol("WM_DELETE_WINDOW", close_settings_window)
+
+    if IS_PI:
+        # The main window is borderless fullscreen with no cursor, so the
+        # pop-up matches: no title bar to close it with, Close button only.
+        settings_window.overrideredirect(True)
+        settings_window.config(cursor="none")
+        container = tk.Frame(
+            settings_window, bg=PALETTE['surface'],
+            highlightbackground=PALETTE['baseline'], highlightthickness=1
+        )
+    else:
+        settings_window.resizable(False, False)
+        container = tk.Frame(settings_window, bg=PALETTE['surface'])
+    container.pack(fill=tk.BOTH, expand=True)
 
     heading = tk.Label(
-        settings_frame, text="DISPLAY SETTINGS", bg=PALETTE['surface'], fg=PALETTE['primary'],
+        container, text="DISPLAY SETTINGS", bg=PALETTE['surface'], fg=PALETTE['primary'],
         font=('Segoe UI', 11, 'bold'), anchor='w'
     )
-    heading.grid(row=0, column=0, columnspan=2, sticky='w', padx=14, pady=(10, 6))
+    heading.grid(row=0, column=0, columnspan=2, sticky='w', padx=14, pady=(12, 8))
 
     keys = ('viewing_mode', 'color_scheme', 'chart_type', 'color_scheme_interval')
     for i, key in enumerate(keys, start=1):
-        is_last = (i == len(keys))
-        row_pady = (4, 12) if is_last else 4
-
         label = tk.Label(
-            settings_frame, text=SETTINGS_LABELS[key], bg=PALETTE['surface'], fg=PALETTE['secondary'],
+            container, text=SETTINGS_LABELS[key], bg=PALETTE['surface'], fg=PALETTE['secondary'],
             font=('Segoe UI', 10), anchor='w'
         )
-        label.grid(row=i, column=0, sticky='w', padx=(14, 6), pady=row_pady)
+        label.grid(row=i, column=0, sticky='w', padx=(14, 6), pady=4)
 
         var = tk.StringVar(value=globals()[key])
         combo = ttk.Combobox(
-            settings_frame, textvariable=var, values=SETTINGS_OPTIONS[key],
+            container, textvariable=var, values=SETTINGS_OPTIONS[key],
             state='readonly', width=12, style='Dark.TCombobox'
         )
-        combo.grid(row=i, column=1, padx=(0, 14), pady=row_pady)
+        combo.grid(row=i, column=1, padx=(0, 14), pady=4)
         combo.bind('<<ComboboxSelected>>', lambda event, k=key, v=var: apply_setting_change(k, v.get()))
+
+    close_button = tk.Button(
+        container, text="Close", command=close_settings_window,
+        bg=PALETTE['surface'], fg=PALETTE['secondary'], bd=0, highlightthickness=0,
+        activebackground=PALETTE['page'], activeforeground=PALETTE['primary'],
+        font=('Segoe UI', 10), padx=10, pady=4,
+    )
+    close_button.grid(row=len(keys) + 1, column=0, columnspan=2, sticky='e', padx=14, pady=(10, 12))
+
+    settings_window.bind('<Escape>', lambda event: close_settings_window())
+
+    # Center over the main window rather than letting the WM place it,
+    # which on the Pi's borderless fullscreen would land it at 0,0.
+    settings_window.update_idletasks()
+    win_w = settings_window.winfo_width()
+    win_h = settings_window.winfo_height()
+    x = root.winfo_rootx() + (root.winfo_width() - win_w) // 2
+    y = root.winfo_rooty() + (root.winfo_height() - win_h) // 2
+    settings_window.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+    settings_window.lift()
 
 def update_more_metrics():
     global more_fig, more_ax, more_canvas
