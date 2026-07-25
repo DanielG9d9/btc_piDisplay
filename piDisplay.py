@@ -132,14 +132,12 @@ SETTINGS_LABELS = {
     'color_scheme_interval': 'Interval',
 }
 
-# Display Settings pop-up sizing. Everything is derived from this scale so the
-# window stays proportional — it's a touch target on the Pi's small screen,
-# so text and dropdowns are deliberately oversized rather than desktop-sized.
+# Display Settings pop-up sizing: fonts, padding and button sizes are all
+# multiplied by this, so the window stays proportional. It's a touch target on
+# the Pi's small screen, so everything is deliberately oversized rather than
+# desktop-sized; build_settings_window() scales back down if the result would
+# not fit the display.
 SETTINGS_SCALE = 2
-SETTINGS_HEADING_FONT = ('Segoe UI', 11 * SETTINGS_SCALE, 'bold')
-SETTINGS_FONT = ('Segoe UI', 10 * SETTINGS_SCALE)
-SETTINGS_PAD = 4 * SETTINGS_SCALE
-SETTINGS_ARROW_SIZE = 14 * SETTINGS_SCALE
 
 PALETTE = {
     'page': '#0d0d0d',
@@ -277,28 +275,8 @@ def create_display():
     chart_frame = ttk.Frame(root)
     chart_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
-    # Dark-themed combobox style for the Options window's settings controls.
-    # Sized for touch: the font, cell padding and arrow are all scaled so the
-    # dropdowns are big enough to hit with a fingertip, not just a mouse.
     style = ttk.Style()
     style.theme_use('clam')
-    style.configure('Dark.TCombobox',
-        fieldbackground=PALETTE['surface'], background=PALETTE['surface'],
-        foreground=PALETTE['primary'], arrowcolor=PALETTE['secondary'],
-        bordercolor=PALETTE['baseline'], lightcolor=PALETTE['surface'], darkcolor=PALETTE['surface'],
-        font=SETTINGS_FONT, padding=SETTINGS_PAD, arrowsize=SETTINGS_ARROW_SIZE,
-    )
-    style.map('Dark.TCombobox',
-        fieldbackground=[('readonly', PALETTE['surface'])],
-        foreground=[('readonly', PALETTE['primary'])],
-    )
-    # The dropdown list is a classic Tk listbox, so its row height comes from
-    # the option database rather than the ttk style.
-    root.option_add('*TCombobox*Listbox.font', SETTINGS_FONT)
-    root.option_add('*TCombobox*Listbox.background', PALETTE['surface'])
-    root.option_add('*TCombobox*Listbox.foreground', PALETTE['primary'])
-    root.option_add('*TCombobox*Listbox.selectBackground', PALETTE['accent'])
-    root.option_add('*TCombobox*Listbox.selectForeground', PALETTE['primary'])
 
     if IS_PI:
         screen_width = root.winfo_screenwidth() / root.winfo_screenheight() * 10
@@ -367,16 +345,48 @@ def close_settings_window():
             pass
         settings_window = None
 
+def style_option_button(button, selected):
+    """Paint a settings option button as either the active choice (filled with
+    the accent color) or an inactive one."""
+    if selected:
+        button.config(
+            bg=PALETTE['accent'], fg=PALETTE['primary'],
+            activebackground=PALETTE['accent'], activeforeground=PALETTE['primary'],
+        )
+    else:
+        button.config(
+            bg=PALETTE['page'], fg=PALETTE['secondary'],
+            activebackground=PALETTE['baseline'], activeforeground=PALETTE['primary'],
+        )
+
+def choose_setting(key, value, group):
+    """Apply the tapped option and move the highlight onto it. `group` is the
+    {option: button} mapping for that one setting's row."""
+    apply_setting_change(key, value)
+    for option, button in group.items():
+        style_option_button(button, option == value)
+
 def show_settings_window():
     """Open the Display Settings pop-up (viewing mode, color scheme, chart type,
     color scheme interval) over whichever screen is showing. Changes apply
     immediately and persist to config.json. Clicking Options again closes it."""
-    global settings_window
-
     if settings_window is not None:
         # Already open — the Options button toggles it shut.
         close_settings_window()
         return
+    build_settings_window(SETTINGS_SCALE)
+
+def build_settings_window(scale, refit=True):
+    """Build the pop-up at the given size scale. If the result overspills the
+    screen — the Pi's panel is only 800x480, and font metrics differ per
+    platform — it's rebuilt once at whatever scale actually fits, rather than
+    leaving the Close button off the bottom edge."""
+    global settings_window
+
+    s = scale
+    heading_font = ('Segoe UI', max(int(round(11 * s)), 8), 'bold')
+    body_font = ('Segoe UI', max(int(round(10 * s)), 8))
+    pad = max(int(round(4 * s)), 2)
 
     settings_window = tk.Toplevel(root)
     settings_window.title("Display Settings")
@@ -391,54 +401,83 @@ def show_settings_window():
         settings_window.config(cursor="none")
         container = tk.Frame(
             settings_window, bg=PALETTE['surface'],
-            highlightbackground=PALETTE['baseline'], highlightthickness=SETTINGS_SCALE
+            highlightbackground=PALETTE['baseline'], highlightthickness=max(int(s), 1)
         )
     else:
         settings_window.resizable(False, False)
         container = tk.Frame(settings_window, bg=PALETTE['surface'])
     container.pack(fill=tk.BOTH, expand=True)
 
-    s = SETTINGS_SCALE
     heading = tk.Label(
         container, text="DISPLAY SETTINGS", bg=PALETTE['surface'], fg=PALETTE['primary'],
-        font=SETTINGS_HEADING_FONT, anchor='w'
+        font=heading_font, anchor='w'
     )
-    heading.grid(row=0, column=0, columnspan=2, sticky='w', padx=14 * s, pady=(12 * s, 8 * s))
+    heading.grid(row=0, column=0, columnspan=2, sticky='w', padx=int(14 * s), pady=(int(12 * s), int(8 * s)))
 
     keys = ('viewing_mode', 'color_scheme', 'chart_type', 'color_scheme_interval')
     for i, key in enumerate(keys, start=1):
         label = tk.Label(
             container, text=SETTINGS_LABELS[key], bg=PALETTE['surface'], fg=PALETTE['secondary'],
-            font=SETTINGS_FONT, anchor='w'
+            font=body_font, anchor='w'
         )
-        label.grid(row=i, column=0, sticky='w', padx=(14 * s, 6 * s), pady=4 * s)
+        label.grid(row=i, column=0, sticky='w', padx=(int(14 * s), int(6 * s)), pady=int(4 * s))
 
-        var = tk.StringVar(value=globals()[key])
-        combo = ttk.Combobox(
-            container, textvariable=var, values=SETTINGS_OPTIONS[key],
-            state='readonly', width=12, style='Dark.TCombobox', font=SETTINGS_FONT
-        )
-        combo.grid(row=i, column=1, sticky='ew', padx=(0, 14 * s), pady=4 * s)
-        combo.bind('<<ComboboxSelected>>', lambda event, k=key, v=var: apply_setting_change(k, v.get()))
+        # Every option is its own button rather than a dropdown. A ttk combobox
+        # popdown decides what you chose from the list's curselection, which only
+        # follows <Motion> as a mouse pointer travels over the rows — a
+        # touchscreen tap arrives with no such motion, so the list would close
+        # having "re-selected" the value that was already current. Buttons take a
+        # single tap wherever it lands, and show the whole choice set at once.
+        options_row = tk.Frame(container, bg=PALETTE['surface'])
+        options_row.grid(row=i, column=1, sticky='w', padx=(0, int(14 * s)), pady=int(4 * s))
+
+        group = {}
+        for option in SETTINGS_OPTIONS[key]:
+            button = tk.Button(
+                options_row, text=option, font=body_font,
+                bd=0, highlightthickness=0, padx=pad * 2, pady=pad,
+            )
+            button.pack(side=tk.LEFT, padx=(0, int(3 * s)))
+            button.config(command=lambda k=key, v=option, g=group: choose_setting(k, v, g))
+            group[option] = button
+
+        for option, button in group.items():
+            style_option_button(button, option == globals()[key])
 
     close_button = tk.Button(
         container, text="Close", command=close_settings_window,
         bg=PALETTE['surface'], fg=PALETTE['secondary'], bd=0, highlightthickness=0,
         activebackground=PALETTE['page'], activeforeground=PALETTE['primary'],
-        font=SETTINGS_FONT, padx=10 * s, pady=4 * s,
+        font=body_font, padx=int(10 * s), pady=int(4 * s),
     )
-    close_button.grid(row=len(keys) + 1, column=0, columnspan=2, sticky='e', padx=14 * s, pady=(10 * s, 12 * s))
+    close_button.grid(row=len(keys) + 1, column=0, columnspan=2, sticky='e',
+                      padx=int(14 * s), pady=(int(10 * s), int(12 * s)))
 
     settings_window.bind('<Escape>', lambda event: close_settings_window())
 
-    # Center over the main window rather than letting the WM place it,
-    # which on the Pi's borderless fullscreen would land it at 0,0.
     settings_window.update_idletasks()
     win_w = settings_window.winfo_width()
     win_h = settings_window.winfo_height()
+    screen_w = root.winfo_screenwidth()
+    screen_h = root.winfo_screenheight()
+
+    if refit and (win_w > screen_w or win_h > screen_h):
+        # Too big for this display — measure what we overshot by and rebuild
+        # once at a scale that fits, leaving a small margin.
+        fit = min(screen_w * 0.96 / win_w, screen_h * 0.96 / win_h)
+        close_settings_window()
+        build_settings_window(max(scale * fit, 1.0), refit=False)
+        return
+
+    # Center over the main window rather than letting the WM place it,
+    # which on the Pi's borderless fullscreen would land it at 0,0. Clamped to
+    # the screen so a wide row of options can't push the Close button off the
+    # edge of a small panel.
     x = root.winfo_rootx() + (root.winfo_width() - win_w) // 2
     y = root.winfo_rooty() + (root.winfo_height() - win_h) // 2
-    settings_window.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+    x = min(max(x, 0), max(root.winfo_screenwidth() - win_w, 0))
+    y = min(max(y, 0), max(root.winfo_screenheight() - win_h, 0))
+    settings_window.geometry(f"+{x}+{y}")
     settings_window.lift()
 
 def update_more_metrics():
