@@ -48,6 +48,16 @@ if args.static:
 # Use configuration values
 time_series = config['time_series'].lower()
 viewing_mode = config.get('viewing_mode', 'rolling').lower()
+color_scheme = config.get('color_scheme', 'static').lower()  # 'static' = fixed accent, 'dynamic' = green/red by price direction
+COLOR_SCHEME_INTERVAL_MINUTES = {'daily': 1440, 'hourly': 60, '15min': 15, '5min': 5}
+color_scheme_interval = config.get('color_scheme_interval', 'hourly').lower()
+color_scheme_interval_minutes = COLOR_SCHEME_INTERVAL_MINUTES.get(color_scheme_interval, 60)
+chart_type = config.get('chart_type', 'line').lower()  # 'line' or 'candlestick'
+
+# Price refresh cadence always matches color_scheme_interval, so a 5-minute
+# interval both fetches and displays fresh data every 5 minutes — no separate
+# setting to keep in sync.
+config['update_intervals']['price'] = color_scheme_interval_minutes * 60
 testing = config['testing']
 
 connect_to = config['connect_to']
@@ -60,13 +70,18 @@ CACHE_FILE = config['cache_file']
 
 # Set up logging
 log_file = config['testing_log_file'] if testing else config['log_file']
-logging.basicConfig(
-    filename=log_file,
+log_kwargs = dict(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
-    # flush=True # Not working
 )
+try:
+    logging.basicConfig(filename=log_file, **log_kwargs)
+except OSError:
+    # Configured log path (e.g. the Pi's log_file) doesn't exist on this machine.
+    fallback_log = str(pathlib.Path(__file__).resolve().parent / "bitcoin_display.log")
+    logging.basicConfig(filename=fallback_log, **log_kwargs)
+    logging.warning(f"Could not open configured log file '{log_file}'; falling back to '{fallback_log}'.")
 
 # RPC connection
 rpc_connection = AuthServiceProxy(f"http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}", timeout=30)
@@ -76,7 +91,7 @@ last_price_update = 0 # Variable for tracking when to update price
 last_blockchain_update = 0 # Variable for tracking when to update blockchain info
 fig = None # Creating global fig
 canvas = None # Creating global canvas
-previous_chain, previous_network , previous_fees = "", "", "" # Initiate global shit
+previous_chain, previous_network, previous_fees = None, None, None
 blockchain_chain = ""
 blockchain_blocks = ""
 blockchain_verification_progress = ""
@@ -100,6 +115,67 @@ more_ax = None
 countdown_label = None
 exit_button = None
 more_button = None
+toolbar_frame = None
+settings_frame = None
+
+SETTINGS_OPTIONS = {
+    'viewing_mode': ['static', 'rolling'],
+    'color_scheme': ['static', 'dynamic'],
+    'chart_type': ['line', 'candlestick', 'baseline'],
+    'color_scheme_interval': ['daily', 'hourly', '15min', '5min'],
+}
+SETTINGS_LABELS = {
+    'viewing_mode': 'Viewing Mode',
+    'color_scheme': 'Color Scheme',
+    'chart_type': 'Chart Type',
+    'color_scheme_interval': 'Interval',
+}
+
+PALETTE = {
+    'page': '#0d0d0d',
+    'surface': '#1a1a19',
+    'primary': '#ffffff',
+    'secondary': '#c3c2b7',
+    'muted': '#898781',
+    'grid': '#2c2c2a',
+    'baseline': '#383835',
+    'good': '#0ca30c',
+    'critical': '#d03b3b',
+    'accent': '#005678',
+}
+
+def save_config_value(key, value):
+    """Persist a single display setting to config.json, without disturbing
+    other keys or writing back runtime-derived fields (e.g. update_intervals.price).
+    Re-reads the file fresh so it only ever patches the one key."""
+    try:
+        with open(config_path, 'r') as f:
+            on_disk = json.load(f)
+        on_disk[key] = value
+        with open(config_path, 'w') as f:
+            json.dump(on_disk, f, indent=4)
+    except Exception as e:
+        logging.error(f"Error saving config setting '{key}': {e}")
+
+def apply_setting_change(key, value):
+    """Update a display setting live, persist it to config.json, and
+    immediately re-render the chart from cache so the change is visible
+    right away (used by the More screen's settings controls)."""
+    global viewing_mode, color_scheme, chart_type, color_scheme_interval, color_scheme_interval_minutes
+
+    if key == 'viewing_mode':
+        viewing_mode = value
+    elif key == 'color_scheme':
+        color_scheme = value
+    elif key == 'chart_type':
+        chart_type = value
+    elif key == 'color_scheme_interval':
+        color_scheme_interval = value
+        color_scheme_interval_minutes = COLOR_SCHEME_INTERVAL_MINUTES.get(value, 60)
+        config['update_intervals']['price'] = color_scheme_interval_minutes * 60
+
+    save_config_value(key, value)
+    update_price_chart_from_cache()
 
 def update_display():
     global app_running
@@ -111,7 +187,7 @@ def update_display():
         display_timer_id = root.after(300000, update_display)
 
 def create_display():
-    global root, fig, canvas, chart_frame, exit_button, more_button, countdown_label
+    global root, fig, canvas, chart_frame, exit_button, more_button, countdown_label, toolbar_frame
     root = tk.Tk()
     root.title("Bitcoin Node Information")
 
@@ -139,41 +215,67 @@ def create_display():
     root.bind('<ButtonPress-1>', on_press)
     root.bind('<ButtonRelease-1>', on_release)
 
-    exit_button = tk.Button(
-        root, text="Exit", command=proper_exit,
-        bg='#202222', fg='white',
-        bd=0, highlightthickness=0,
-        activebackground='#202222', activeforeground='red'
-    )
-    exit_button.place(relx=1.0, rely=0.01, anchor='ne')
-    # MORE button (next to Exit)
-    more_button = tk.Button(
-        root, text="More", command=show_more_screen,
-        bg='#202222', fg='cyan', bd=0, highlightthickness=0,
-        activebackground='#303333', activeforeground='cyan'
-    )
-    more_button.place(relx=0.95, rely=0.01, anchor='ne')  # Slightly left of Exit
-
-    # Countdown label next to More button
-    global countdown_label
-    
     # Calculate initial countdown
     try:
-        initial_seconds = time_until_next_even_hour()
+        initial_seconds = time_until_next_aligned_update(config['update_intervals']['price'])
         initial_minutes = int(initial_seconds // 60)
         initial_secs = int(initial_seconds % 60)
         initial_text = f"{initial_minutes:02d}:{initial_secs:02d}"
     except:
         initial_text = "00:00"
-    
-    countdown_label = tk.Label(
-        root, text=initial_text, bg='#202222', fg='yellow',
-        font=('Arial', 10)
+
+    # Single toolbar frame so the countdown/More/Exit controls share one
+    # baseline and consistent spacing instead of being independently
+    # placed by relx (which drifts out of alignment as widget widths differ).
+    global toolbar_frame
+    toolbar_frame = tk.Frame(root, bg=PALETTE['page'])
+    toolbar_frame.place(relx=1.0, rely=0.0, anchor='ne', x=-10, y=8)
+
+    button_style = dict(
+        bg=PALETTE['page'], bd=0, highlightthickness=0,
+        activebackground=PALETTE['surface'],
+        font=('Segoe UI', 10), padx=10, pady=4,
     )
-    countdown_label.place(relx=0.87, rely=0.01, anchor='ne')  # Left of More button
+
+    countdown_label = tk.Label(
+        toolbar_frame, text=initial_text, bg=PALETTE['page'], fg=PALETTE['secondary'],
+        font=('Consolas', 11), padx=10, pady=4
+    )
+    countdown_label.pack(side=tk.LEFT)
+
+    more_button = tk.Button(
+        toolbar_frame, text="More", command=show_more_screen,
+        fg=PALETTE['accent'], activeforeground=PALETTE['accent'],
+        **button_style
+    )
+    more_button.pack(side=tk.LEFT)
+
+    exit_button = tk.Button(
+        toolbar_frame, text="Exit", command=proper_exit,
+        fg=PALETTE['secondary'], activeforeground=PALETTE['critical'],
+        **button_style
+    )
+    exit_button.pack(side=tk.LEFT)
 
     chart_frame = ttk.Frame(root)
     chart_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+
+    # Dark-themed combobox style for the More screen's settings controls.
+    style = ttk.Style()
+    style.theme_use('clam')
+    style.configure('Dark.TCombobox',
+        fieldbackground=PALETTE['surface'], background=PALETTE['surface'],
+        foreground=PALETTE['primary'], arrowcolor=PALETTE['secondary'],
+        bordercolor=PALETTE['baseline'], lightcolor=PALETTE['surface'], darkcolor=PALETTE['surface'],
+    )
+    style.map('Dark.TCombobox',
+        fieldbackground=[('readonly', PALETTE['surface'])],
+        foreground=[('readonly', PALETTE['primary'])],
+    )
+    root.option_add('*TCombobox*Listbox.background', PALETTE['surface'])
+    root.option_add('*TCombobox*Listbox.foreground', PALETTE['primary'])
+    root.option_add('*TCombobox*Listbox.selectBackground', PALETTE['accent'])
+    root.option_add('*TCombobox*Listbox.selectForeground', PALETTE['primary'])
 
     if IS_PI:
         screen_width = root.winfo_screenwidth() / root.winfo_screenheight() * 10
@@ -185,19 +287,19 @@ def create_display():
     canvas.draw()
     canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
 
-    exit_button.lift()
-    more_button.lift()
-    countdown_label.lift()
+    toolbar_frame.lift()
     return root
 
 
 def show_more_screen():
-    global current_screen, more_fig, more_canvas, more_ax, canvas, fig, ax    
+    global current_screen, more_fig, more_canvas, more_ax, canvas, fig, ax, settings_frame
 
     if current_screen == "more":
         # ALWAYS RECREATE MAIN SCREEN FRESH - identical to initial state
         more_canvas.get_tk_widget().destroy()
-        
+        settings_frame.destroy()
+        settings_frame = None
+
         # Completely rebuild main chart from scratch
         fig.clear()
         ax = fig.add_subplot(111)
@@ -208,9 +310,7 @@ def show_more_screen():
         update_blockchain_info(force_update=True)
         
         # Ensure UI elements are visible
-        exit_button.lift()
-        more_button.lift()
-        countdown_label.lift()
+        toolbar_frame.lift()
         
         current_screen = "main"
         return
@@ -219,26 +319,73 @@ def show_more_screen():
     current_screen = "more"
     canvas.get_tk_widget().pack_forget()  # Hide main chart
     
-    # Create more chart directly in chart_frame
-    more_fig = plt.Figure(figsize=(14, 6))
+    # Create more chart directly in chart_frame, matching the main chart's aspect ratio
+    if IS_PI:
+        screen_width = root.winfo_screenwidth() / root.winfo_screenheight() * 10
+        screen_height = 4.0
+        more_fig = plt.Figure(figsize=(screen_width, screen_height))
+    else:
+        more_fig = plt.Figure(figsize=(10, 4))
     more_ax = more_fig.add_subplot(111)
-    more_fig.patch.set_facecolor('#191A1A')
-    more_ax.set_facecolor('#202222')
+    more_fig.patch.set_facecolor(PALETTE['page'])
+    more_ax.set_facecolor(PALETTE['surface'])
     
     more_canvas = FigureCanvasTkAgg(more_fig, master=chart_frame)
     more_canvas.draw()
     more_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
-    
+
     update_more_metrics()
+    build_settings_panel()
+
+def build_settings_panel():
+    """Build the More screen's display-settings controls (viewing mode,
+    color scheme, chart type, color scheme interval). Changes apply
+    immediately and persist to config.json."""
+    global settings_frame
+
+    settings_frame = tk.Frame(
+        chart_frame, bg=PALETTE['surface'],
+        highlightbackground=PALETTE['baseline'], highlightthickness=1
+    )
+    # Anchored below the toolbar (More/Exit/countdown), same right margin,
+    # with enough clearance that it never sits behind those controls.
+    settings_frame.place(relx=1.0, rely=0.0, anchor='ne', x=-10, y=48)
+
+    heading = tk.Label(
+        settings_frame, text="DISPLAY SETTINGS", bg=PALETTE['surface'], fg=PALETTE['primary'],
+        font=('Segoe UI', 11, 'bold'), anchor='w'
+    )
+    heading.grid(row=0, column=0, columnspan=2, sticky='w', padx=14, pady=(10, 6))
+
+    keys = ('viewing_mode', 'color_scheme', 'chart_type', 'color_scheme_interval')
+    for i, key in enumerate(keys, start=1):
+        is_last = (i == len(keys))
+        row_pady = (4, 12) if is_last else 4
+
+        label = tk.Label(
+            settings_frame, text=SETTINGS_LABELS[key], bg=PALETTE['surface'], fg=PALETTE['secondary'],
+            font=('Segoe UI', 10), anchor='w'
+        )
+        label.grid(row=i, column=0, sticky='w', padx=(14, 6), pady=row_pady)
+
+        var = tk.StringVar(value=globals()[key])
+        combo = ttk.Combobox(
+            settings_frame, textvariable=var, values=SETTINGS_OPTIONS[key],
+            state='readonly', width=12, style='Dark.TCombobox'
+        )
+        combo.grid(row=i, column=1, padx=(0, 14), pady=row_pady)
+        combo.bind('<<ComboboxSelected>>', lambda event, k=key, v=var: apply_setting_change(k, v.get()))
 
 def update_more_metrics():
     global more_fig, more_ax, more_canvas
     if current_screen != "more" or more_ax is None:
         return
-    
+
     more_ax.clear()
-    more_ax.set_facecolor('#202222')
-    
+    more_ax.set_facecolor(PALETTE['surface'])
+    more_fig.patch.set_facecolor(PALETTE['page'])
+    more_ax.axis('off')
+
     # Fetch data
     if testing:
         print("Using dummy data for testing")
@@ -268,16 +415,9 @@ def update_more_metrics():
             current_price = high_24h = low_24h = address_balance = 0
             last_update = "Error"
     
-    # Display metrics
-    more_ax.text(0.1, 0.95, "NODE METRICS", transform=more_ax.transAxes,
-                color='white', fontsize=16, weight='bold')
-    
     chain_name = blockchain_info.get('chain', 'unknown') if blockchain_info else 'unknown'
-    sync_progress = blockchain_info.get('verificationprogress', 0) * 100 if blockchain_info else 0
     difficulty = blockchain_info.get('difficulty', 0) if blockchain_info else 0
     difficulty_text = format_difficulty(difficulty)
-    connections_in = network_info.get('connections_in', 0) if network_info else 0
-    connections_out = network_info.get('connections_out', 0) if network_info else 0
     total_connections = network_info.get('connections', 0) if network_info else 0
     latest_block = blockchain_info.get('blocks', 0) if blockchain_info else 0
     fee_rates_usd = [0, 0, 0]
@@ -285,37 +425,47 @@ def update_more_metrics():
         fee_rates_usd = [fee * 0.00000001 * current_price for fee in fees]
     usd_value = address_balance * current_price
 
-    left_x = 0.1
-    right_x = 0.55
-    y_step = 0.08
+    def label(text):
+        return TextArea(text, textprops=dict(color=PALETTE['secondary'], fontsize=13))
 
-    labels = [
-        (left_x, 0.85, f"Last Update: {last_update}", 'cyan'),
-        (left_x, 0.85 - y_step, f"Peers: {total_connections}", 'cyan'),
-        (left_x, 0.85 - 2 * y_step, f"Latest Block: {latest_block:,}", 'cyan'),
-        (left_x, 0.85 - 3 * y_step, f"Fee Rates (sat/vB): L:{fees[0]} M:{fees[1]} H:{fees[2]}" if fees else "Fee Rates: N/A", 'cyan'),
-        (left_x, 0.85 - 4 * y_step, f"Fee Rates (USD): L:${fee_rates_usd[0]:,.2f} M:${fee_rates_usd[1]:,.2f} H:${fee_rates_usd[2]:,.2f}" if fees else "", 'cyan'),
-        (left_x, 0.85 - 5 * y_step, f"24h High: ${high_24h:,.0f}", 'green'),
-        (left_x, 0.85 - 6 * y_step, f"24h Low: ${low_24h:,.0f}", 'red'),
-        (left_x, 0.85 - 7 * y_step, f"Address Balance: {address_balance:.3f} BTC (${usd_value:,.0f})", 'yellow'),
+    def value(text, color=None):
+        return TextArea(text, textprops=dict(color=color or PALETTE['primary'], fontsize=13, fontweight='bold'))
+
+    rows = [
+        HPacker(children=[label("Last Update:"), value(last_update)], align="left", pad=0, sep=6),
+        HPacker(children=[label("Network:"), value(f"{chain_name}net")], align="left", pad=0, sep=6),
+        HPacker(children=[label("Peers:"), value(str(total_connections))], align="left", pad=0, sep=6),
+        HPacker(children=[label("Latest Block:"), value(f"{latest_block:,}")], align="left", pad=0, sep=6),
+        HPacker(children=[label("Difficulty:"), value(difficulty_text)], align="left", pad=0, sep=6),
+        HPacker(children=[label("Fees (sat/vB):"),
+                           value(f"L:{fees[0]} M:{fees[1]} H:{fees[2]}" if fees else "N/A")], align="left", pad=0, sep=6),
+        HPacker(children=[label("Fees (USD):"),
+                           value(f"L:${fee_rates_usd[0]:,.2f} M:${fee_rates_usd[1]:,.2f} H:${fee_rates_usd[2]:,.2f}" if fees else "N/A")], align="left", pad=0, sep=6),
+        HPacker(children=[label("24h High:"), value(f"${high_24h:,.0f}", PALETTE['good'])], align="left", pad=0, sep=6),
+        HPacker(children=[label("24h Low:"), value(f"${low_24h:,.0f}", PALETTE['critical'])], align="left", pad=0, sep=6),
+        HPacker(children=[label("Address Balance:"), value(f"{address_balance:.3f} BTC (${usd_value:,.0f})", PALETTE['accent'])], align="left", pad=0, sep=6),
     ]
+    box = VPacker(children=rows, align="left", pad=0, sep=8)
+    heading = TextArea("NODE METRICS", textprops=dict(color=PALETTE['primary'], fontsize=18, fontweight='bold'))
 
-    for x, y, text, color in labels:
-        if text:
-            more_ax.text(x, y, text, transform=more_ax.transAxes, color=color, fontsize=12)
+    for child in more_ax.get_children():
+        if isinstance(child, AnchoredOffsetbox):
+            child.remove()
 
-    more_ax.axis('off')
+    anchored_heading = AnchoredOffsetbox(loc='upper left', child=heading, pad=0.6, frameon=False,
+                                          bbox_to_anchor=(0.02, 0.98), bbox_transform=more_ax.transAxes, borderpad=0)
+    anchored_box = AnchoredOffsetbox(loc='upper left', child=box, pad=0.8, frameon=True,
+                                      bbox_to_anchor=(0.02, 0.86), bbox_transform=more_ax.transAxes, borderpad=0)
+    anchored_box.patch.set_boxstyle("round,pad=0.6")
+    anchored_box.patch.set_facecolor(PALETTE['page'])
+    anchored_box.patch.set_edgecolor(PALETTE['baseline'])
+    anchored_box.patch.set_alpha(0.9)
+
+    more_ax.add_artist(anchored_heading)
+    more_ax.add_artist(anchored_box)
+
     more_fig.tight_layout()
     more_canvas.draw()
-
-rpc_connection = AuthServiceProxy(f"http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}", timeout=30)
-
-logging.basicConfig(
-    filename='bitcoin_display.log',
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
 
 def proper_exit():
     global app_running, root, price_timer_id, blockchain_timer_id, display_timer_id
@@ -365,34 +515,19 @@ def on_escape(event):
     proper_exit()
 def get_timestamp():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-def time_until_next_even_hour(): # Used for price data when updating hourly (3600 seconds)
+def time_until_next_aligned_update(interval_seconds):
+    """Seconds remaining until the next wall-clock boundary that's a multiple
+    of interval_seconds since the top of the hour (e.g. a 5-minute interval
+    lands on :00, :05, :10, ...). The grid resets at the top of every hour,
+    so the first wait after startup may be shorter than a full interval."""
     now = datetime.now()
-    current_hour = now.hour
-    # Calculate next even hour
-    if current_hour % 2 == 0:  # Even hour
-        next_hour = current_hour + 2
-    else:  # Odd hour
-        next_hour = current_hour + 1
-    
-    # Handle hour wraparound
-    if next_hour >= 24:
-        next_hour -= 24
-    
-    next_time = now.replace(hour=next_hour, minute=0, second=0, microsecond=0)
-    # If next_time is in the past (shouldn't happen), add another 2 hours
-    if next_time <= now:
-        next_time += timedelta(hours=2)
-    
-    return (next_time - now).total_seconds()
-def time_until_next_10min(): # Used for blockchain data when updating every 10 minutes (600 seconds)
-    now = datetime.now()
-    minutes = now.minute
-    next_10min = (minutes // 10 + 1) * 10
-    if next_10min >= 60:
-        next_10min = 0
-        now += timedelta(hours=1)
-    target_time = now.replace(minute=next_10min, second=0, microsecond=0)
-    return (target_time - now).total_seconds()
+    hour_start = now.replace(minute=0, second=0, microsecond=0)
+    elapsed = (now - hour_start).total_seconds()
+    intervals_passed = int(elapsed // interval_seconds)
+    next_boundary = hour_start + timedelta(seconds=(intervals_passed + 1) * interval_seconds)
+    if next_boundary > hour_start + timedelta(hours=1):
+        next_boundary = hour_start + timedelta(hours=1)
+    return (next_boundary - now).total_seconds()
 def update_countdown():
     """Update the countdown label with time until next price update (updates 10x per second for smooth animation)"""
     global countdown_label, app_running, root
@@ -401,10 +536,10 @@ def update_countdown():
         return
     
     try:
-        # Calculate time until next even hour (price update)
-        seconds_remaining = time_until_next_even_hour()
-        
-        # Format as MM:SS (max is 1 hour)
+        # Calculate time until the next price update, per config['update_intervals']['price']
+        seconds_remaining = time_until_next_aligned_update(config['update_intervals']['price'])
+
+        # Format as MM:SS
         minutes = int(seconds_remaining // 60)
         secs = int(seconds_remaining % 60)
         
@@ -436,7 +571,7 @@ def get_fee_estimates(rpc_connection):
         return [low_fee, medium_fee, high_fee]
     except Exception as e:
         logging.error(f"Error getting fee estimates: {e}")
-        return None, None, None
+        return None
 
 def get_address_balance(address):
     try:
@@ -450,26 +585,6 @@ def get_address_balance(address):
     except Exception as e:
         logging.error(f"Error getting address balance: {e}")
         return 0
-
-def initialize_price_cache():
-    """Fetch fresh price data and cache it on startup"""
-    try:
-        print("Initializing price cache...")
-        current_price, daily_change, prices = get_bitcoin_price()
-        if current_price is not None:
-            with open(CACHE_FILE, 'w') as cache_file:
-                json.dump({
-                    "current_price": current_price,
-                    "daily_change": daily_change,
-                    "prices": prices,
-                    "timestamp": time.time()
-                }, cache_file)
-            print("Price cache initialized successfully.")
-        else:
-            print("Failed to initialize price cache - no data available.")
-    except Exception as e:
-        logging.error(f"Error initializing price cache: {e}")
-        print(f"Error initializing price cache: {e}")
 
 def load_price_from_cache():
     """Load price data from cache without fetching new data"""
@@ -507,15 +622,10 @@ def get_bitcoin_price():
         current_data = response.json()
         current_price = current_data["bitcoin"]["usd"]
 
-        # Previous close price (24 hours ago)
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=1)
-
-        # Convert to timestamps
-        start_timestamp = int(start_date.timestamp())
-        end_timestamp = int(end_date.timestamp())
-
-        historical_url = f"https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=usd&from={start_timestamp}&to={end_timestamp}"
+        # Previous 24h of price history. Using days=1 on the plain market_chart
+        # endpoint (rather than market_chart/range) gets 5-minute granularity
+        # for free — /range is capped at hourly on CoinGecko's free tier.
+        historical_url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1"
         historical_response = requests.get(historical_url)
         historical_response.raise_for_status()
         historical_data = historical_response.json()
@@ -531,127 +641,294 @@ def get_bitcoin_price():
     except requests.RequestException as e:
         logging.error(f"Error fetching price data: {e}")
         return None, None, None
-    
-def update_price_chart_from_cache():
-    """Update the price chart using cached data without fetching new data"""
-    global last_price_update, app_running, fig, canvas, ax
-    if not app_running:
-        return  # Don't do anything if the app is not running
-    
-    try:
-        current_price, daily_change, prices = load_price_from_cache()
-        if current_price is None or prices is None or len(prices) == 0:
-            # If no cached data, show error message
-            if ax is None:
-                fig.clear()
-                ax = fig.add_subplot(111)
-            else:
-                ax.clear()
-            ax.set_facecolor('#202222')
-            ax.text(
-                0.5, 0.5,
-                "No cached price data available.\nPlease wait for next update.",
-                ha='center', va='center', color='white', fontsize=14,
-                transform=ax.transAxes
-            )
-            fig.patch.set_facecolor('#191A1A')
-            canvas.draw_idle()
-            return
 
-        # Use cached data to update the chart
+def get_bitcoin_ohlc():
+    """Fetch real 30-minute OHLC candles from CoinGecko (actual exchange-derived
+    open/high/low/close, not approximated from the plain price series)."""
+    try:
+        url = "https://api.coingecko.com/api/v3/coins/bitcoin/ohlc?vs_currency=usd&days=1"
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.json()  # [[timestamp_ms, open, high, low, close], ...]
+    except requests.RequestException as e:
+        logging.error(f"Error fetching OHLC data: {e}")
+        return None
+
+def show_chart_message(text):
+    """Clear the main chart and show a centered status message."""
+    global fig, canvas, ax
+    if ax is None:
         fig.clear()
         ax = fig.add_subplot(111)
-        ax.set_facecolor('#202222')
-        fig.subplots_adjust(left=0.08, right=0.99, top=0.92, bottom=0.15)
-        
-        dates = [datetime.fromtimestamp(price[0]/1000) for price in prices]
-        values = [price[1] for price in prices]
+    else:
+        ax.clear()
+    ax.set_facecolor(PALETTE['surface'])
+    ax.axis('off')
+    ax.text(
+        0.5, 0.5, text,
+        ha='center', va='center', color=PALETTE['primary'], fontsize=14,
+        transform=ax.transAxes
+    )
+    fig.patch.set_facecolor(PALETTE['page'])
+    canvas.draw()
 
-        if viewing_mode == "static":
-            est = pytz.timezone('US/Eastern')
-            now_est = datetime.now(est)
-            today_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0)
-            today_midnight_naive = today_midnight.replace(tzinfo=None)
-            today_end = today_midnight.replace(hour=23, minute=59, second=59, microsecond=999999)
-            today_end_naive = today_end.replace(tzinfo=None)
-            
-            plot_dates = [d for d in dates if today_midnight_naive <= d <= today_end_naive]
-            plot_values = [v for d, v in zip(dates, values) if today_midnight_naive <= d <= today_end_naive]
-        else:
-            plot_dates = dates
-            plot_values = values
+def _floor_to_interval(dt, interval_minutes):
+    """Floor a datetime to the start of its color_scheme_interval bucket, keeping its date."""
+    total_minutes = dt.hour * 60 + dt.minute
+    floored_minutes = (total_minutes // interval_minutes) * interval_minutes
+    return dt.replace(hour=floored_minutes // 60, minute=floored_minutes % 60, second=0, microsecond=0)
 
-        ax.plot(plot_dates, plot_values, color='orange')
-        fig.patch.set_facecolor('#191A1A')
-        
-        if daily_change is not None and daily_change >= 0:
-            ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: +{daily_change}%", color='green', loc='left', fontsize=16)
-            title_color = 'green'
-        elif daily_change is not None:
-            ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: -{abs(daily_change)}%", color='red', loc='left', fontsize=16)
-            title_color = 'red'
+def _plot_dynamic_price_line(ax, plot_dates, plot_values):
+    """Draw the price line/fill as a series of segments (sized per
+    color_scheme_interval), each colored green or red depending on whether
+    price rose or fell during that segment."""
+    buckets = []  # [(bucket_key, [(date, value), ...]), ...]
+    for d, v in zip(plot_dates, plot_values):
+        bucket_key = _floor_to_interval(d, color_scheme_interval_minutes)
+        if buckets and buckets[-1][0] == bucket_key:
+            buckets[-1][1].append((d, v))
         else:
-            ax.set_title(f"฿itcoin Price: ${current_price:,.0f}", color='white', loc='left', fontsize=16)
-            title_color = 'white'
+            buckets.append((bucket_key, [(d, v)]))
 
-        ax.spines['top'].set_color(title_color)
-        ax.spines['bottom'].set_color(title_color)
-        ax.spines['left'].set_color(title_color)
-        ax.spines['right'].set_color(title_color)
-        
-        ax.tick_params(axis='x', colors='white')
-        ax.tick_params(axis='y', colors='white')
-        
-        if time_series.lower() == "standard":
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%-I:%M %p'))
+    baseline = min(plot_values)
+    prev_point = None
+    for _, points in buckets:
+        bucket_dates = [p[0] for p in points]
+        bucket_values = [p[1] for p in points]
+        if len(points) > 1:
+            seg_color = PALETTE['good'] if bucket_values[-1] >= bucket_values[0] else PALETTE['critical']
+        elif prev_point is not None:
+            seg_color = PALETTE['good'] if bucket_values[0] >= prev_point[1] else PALETTE['critical']
         else:
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-        
-        currency_formatter = mticker.FuncFormatter(lambda x, _: f'${x:,.0f}')
-        ax.yaxis.set_major_formatter(currency_formatter)
-        
-        fig.tight_layout(pad=0.5, h_pad=0.8, w_pad=0.5)
-        
-        if viewing_mode == "static":
-            est = pytz.timezone('US/Eastern')
-            now_est = datetime.now(est)
-            today_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0)
-            today_midnight_naive = today_midnight.replace(tzinfo=None)
-            today_end = today_midnight.replace(hour=23, minute=59, second=59)
-            today_end_naive = today_end.replace(tzinfo=None)
-            ax.set_xlim(today_midnight_naive, today_end_naive)
-            ax.margins(x=0.01, y=0.05)  # Small x-padding to prevent clipping
-        
-        canvas.draw()
-        
+            seg_color = PALETTE['good']
+
+        # Prepend the previous bucket's last point so segments connect with no visual gap.
+        if prev_point is not None:
+            bucket_dates = [prev_point[0]] + bucket_dates
+            bucket_values = [prev_point[1]] + bucket_values
+
+        ax.plot(bucket_dates, bucket_values, color=seg_color, linewidth=2, zorder=3, solid_capstyle='round')
+        ax.fill_between(bucket_dates, bucket_values, baseline, color=seg_color, alpha=0.15, zorder=2, linewidth=0)
+        prev_point = points[-1]
+
+def _real_ohlc_candles():
+    """Fetch CoinGecko's real 30-min candles and aggregate them up to
+    color_scheme_interval. Returns a list of (bucket_key, open, high, low, close)
+    or None if unavailable (network error, or interval too fine to benefit)."""
+    if testing or color_scheme_interval_minutes <= 30:
+        return None
+    raw = get_bitcoin_ohlc()
+    if not raw:
+        return None
+
+    candles = [(datetime.fromtimestamp(c[0] / 1000), c[1], c[2], c[3], c[4]) for c in raw]
+    if viewing_mode == "static":
+        est = pytz.timezone('US/Eastern')
+        now_est = datetime.now(est)
+        today_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0).replace(tzinfo=None)
+        today_end = now_est.replace(hour=23, minute=59, second=59, microsecond=999999).replace(tzinfo=None)
+        candles = [c for c in candles if today_midnight <= c[0] <= today_end]
+
+    buckets = []  # [(bucket_key, [(open, high, low, close), ...]), ...]
+    for d, o, h, l, c in candles:
+        bucket_key = _floor_to_interval(d, color_scheme_interval_minutes)
+        if buckets and buckets[-1][0] == bucket_key:
+            buckets[-1][1].append((o, h, l, c))
+        else:
+            buckets.append((bucket_key, [(o, h, l, c)]))
+
+    return [
+        (bucket_key, ohlc[0][0], max(o[1] for o in ohlc), min(o[2] for o in ohlc), ohlc[-1][3])
+        for bucket_key, ohlc in buckets
+    ]
+
+def _approximate_candles_from_prices(plot_dates, plot_values):
+    """Approximate candles by bucketing the plain price series (open/close =
+    first/last price in the bucket, high/low = its min/max). Used when the
+    interval is too fine for CoinGecko's real 30-min OHLC to help (15min, 5min)."""
+    if len(plot_values) < 2:
+        return []
+    buckets = []  # [(bucket_key, [value, ...]), ...]
+    for d, v in zip(plot_dates, plot_values):
+        bucket_key = _floor_to_interval(d, color_scheme_interval_minutes)
+        if buckets and buckets[-1][0] == bucket_key:
+            buckets[-1][1].append(v)
+        else:
+            buckets.append((bucket_key, [v]))
+    return [(k, vs[0], max(vs), min(vs), vs[-1]) for k, vs in buckets]
+
+def _plot_candlestick_price(ax, plot_dates, plot_values):
+    """Draw the price series as OHLC candlesticks. Intervals coarser than
+    CoinGecko's native 30-minute OHLC granularity (hourly, daily) use real
+    exchange-derived candles; finer intervals (15min, 5min) approximate
+    candles from the plain price series, which is all that's available at
+    that resolution."""
+    candles = _real_ohlc_candles() or _approximate_candles_from_prices(plot_dates, plot_values)
+    if not candles:
+        return
+
+    interval_days = color_scheme_interval_minutes / (24 * 60)
+    body_width = interval_days * 0.7
+    price_range = max(c[2] for c in candles) - min(c[3] for c in candles)
+    min_body_height = price_range * 0.002 if price_range else 0.01
+
+    for bucket_key, open_, high, low, close in candles:
+        x = mdates.date2num(bucket_key) + interval_days / 2
+
+        if color_scheme == "dynamic":
+            candle_color = PALETTE['good'] if close >= open_ else PALETTE['critical']
+        else:
+            candle_color = PALETTE['accent']
+
+        ax.vlines(x, low, high, color=candle_color, linewidth=1, zorder=2)
+        body_bottom = min(open_, close)
+        body_height = max(abs(close - open_), min_body_height)
+        ax.bar(x, body_height, bottom=body_bottom, width=body_width,
+               color=candle_color, edgecolor=candle_color, zorder=3)
+
+def _plot_baseline_price(ax, plot_dates, plot_values):
+    """Draw the price line/fill relative to a baseline (the first visible
+    price point). In dynamic color_scheme, price above the baseline is green
+    and below is red, with segments split exactly at each crossing so the
+    color change lands on the baseline line; in static, one fixed accent
+    color is used throughout."""
+    if not plot_values:
+        return
+    baseline = plot_values[0]
+    ax.axhline(baseline, color=PALETTE['baseline'], linewidth=1, linestyle='--', zorder=1)
+
+    if color_scheme != "dynamic" or len(plot_values) < 2:
+        ax.plot(plot_dates, plot_values, color=PALETTE['accent'], linewidth=2, zorder=3)
+        ax.fill_between(plot_dates, plot_values, baseline, color=PALETTE['accent'], alpha=0.15, zorder=2)
+        return
+
+    for i in range(len(plot_values) - 1):
+        x0, x1 = plot_dates[i], plot_dates[i + 1]
+        y0, y1 = plot_values[i], plot_values[i + 1]
+        above0, above1 = y0 >= baseline, y1 >= baseline
+
+        if above0 == above1:
+            color = PALETTE['good'] if above0 else PALETTE['critical']
+            ax.plot([x0, x1], [y0, y1], color=color, linewidth=2, zorder=3, solid_capstyle='round')
+            ax.fill_between([x0, x1], [y0, y1], baseline, color=color, alpha=0.15, zorder=2, linewidth=0)
+        else:
+            # Crosses the baseline — split at the interpolated crossing point
+            # so each half is colored for the side it's actually on.
+            t = (baseline - y0) / (y1 - y0)
+            x_cross = x0 + (x1 - x0) * t
+            color0 = PALETTE['good'] if above0 else PALETTE['critical']
+            color1 = PALETTE['good'] if above1 else PALETTE['critical']
+            ax.plot([x0, x_cross], [y0, baseline], color=color0, linewidth=2, zorder=3, solid_capstyle='round')
+            ax.plot([x_cross, x1], [baseline, y1], color=color1, linewidth=2, zorder=3, solid_capstyle='round')
+            ax.fill_between([x0, x_cross], [y0, baseline], baseline, color=color0, alpha=0.15, zorder=2, linewidth=0)
+            ax.fill_between([x_cross, x1], [baseline, y1], baseline, color=color1, alpha=0.15, zorder=2, linewidth=0)
+
+def render_price_chart(current_price, daily_change, prices):
+    """Render the bitcoin price chart onto the shared fig/ax/canvas."""
+    global fig, canvas, ax
+    fig.clear()
+    ax = fig.add_subplot(111)
+    ax.set_facecolor(PALETTE['surface'])
+    fig.patch.set_facecolor(PALETTE['page'])
+    fig.subplots_adjust(left=0.08, right=0.99, top=0.90, bottom=0.15)
+
+    dates = [datetime.fromtimestamp(price[0] / 1000) for price in prices]
+    values = [price[1] for price in prices]
+
+    if viewing_mode == "static":
+        est = pytz.timezone('US/Eastern')
+        now_est = datetime.now(est)
+        today_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_midnight_naive = today_midnight.replace(tzinfo=None)
+        today_end_naive = today_midnight.replace(hour=23, minute=59, second=59, microsecond=999999).replace(tzinfo=None)
+        plot_dates = [d for d in dates if today_midnight_naive <= d <= today_end_naive]
+        plot_values = [v for d, v in zip(dates, values) if today_midnight_naive <= d <= today_end_naive]
+    else:
+        plot_dates, plot_values = dates, values
+
+    if chart_type == "candlestick":
+        _plot_candlestick_price(ax, plot_dates, plot_values)
+    elif chart_type == "baseline":
+        _plot_baseline_price(ax, plot_dates, plot_values)
+    elif color_scheme == "dynamic" and len(plot_values) > 1:
+        _plot_dynamic_price_line(ax, plot_dates, plot_values)
+    else:
+        ax.plot(plot_dates, plot_values, color=PALETTE['accent'], linewidth=2, zorder=3)
+        if plot_values:
+            ax.fill_between(plot_dates, plot_values, min(plot_values), color=PALETTE['accent'], alpha=0.15, zorder=2)
+
+    ax.set_axisbelow(True)
+    ax.grid(axis='y', color=PALETTE['grid'], linewidth=0.6, alpha=0.7, zorder=0)
+    for side in ('top', 'right'):
+        ax.spines[side].set_visible(False)
+    for side in ('bottom', 'left'):
+        ax.spines[side].set_color(PALETTE['baseline'])
+        ax.spines[side].set_linewidth(0.8)
+
+    ax.tick_params(axis='x', colors=PALETTE['muted'])
+    ax.tick_params(axis='y', colors=PALETTE['muted'])
+
+    if time_series.lower() == "standard":
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%-I:%M %p'))
+    else:
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'${x:,.0f}'))
+
+    ax.set_title(f"฿itcoin  ${current_price:,.0f}", loc='left', fontsize=18,
+                 fontweight='bold', color=PALETTE['primary'], pad=14)
+
+    if daily_change is not None:
+        if daily_change > 0:
+            badge_text, badge_color = f"+{daily_change}%", PALETTE['accent']
+        elif daily_change == 0:
+            badge_text, badge_color = f"{daily_change}%", PALETTE['good']
+        else:
+            badge_text, badge_color = f"-{abs(daily_change)}%", PALETTE['critical']
+        ax.text(
+            0.98, 0.94, badge_text, transform=ax.transAxes,
+            ha='right', va='top', fontsize=12, fontweight='bold', color=PALETTE['primary'],
+            bbox=dict(boxstyle='round,pad=0.35', facecolor=badge_color, edgecolor='none'),
+            zorder=4
+        )
+
+    if viewing_mode == "static":
+        ax.set_xlim(today_midnight_naive, today_end_naive)
+        ax.margins(x=0.01, y=0.05)  # Small x-padding to prevent clipping
+
+    fig.tight_layout(pad=0.5, h_pad=0.8, w_pad=0.5)
+    canvas.draw()
+
+def update_price_chart_from_cache():
+    """Update the price chart using cached data without fetching new data"""
+    global app_running
+    if not app_running:
+        return  # Don't do anything if the app is not running
+
+    try:
+        current_price, daily_change, prices = load_price_from_cache()
+        if current_price is None or not prices:
+            show_chart_message("No cached price data available.\nPlease wait for next update.")
+            return
+
+        render_price_chart(current_price, daily_change, prices)
+
         # Redraw node info if available
         if previous_chain is not None:
             update_node_table(previous_chain, previous_network, previous_fees)
-            
+
     except Exception as e:
         logging.error(f"Error updating price chart from cache: {e}")
-        if ax is None:
-            fig.clear()
-            ax = fig.add_subplot(111)
-        else:
-            ax.clear()
-        ax.set_facecolor('#202222')
-        ax.text(
-            0.5, 0.5,
-            "Error loading cached price data.",
-            ha='center', va='center', color='white', fontsize=14,
-            transform=ax.transAxes
-        )
-        fig.patch.set_facecolor('#191A1A')
-        canvas.draw_idle()
+        show_chart_message("Error loading cached price data.")
 
 def update_price_chart(force_update=False):
-    global last_price_update, app_running, fig, canvas, ax, root, price_timer_id
+    global last_price_update, app_running, root, price_timer_id
     if not app_running:
         return  # Don't do anything if the app is not running
-    
+
+    current_time = time.time()
+    next_delay_ms = 300000  # Default retry delay (5 min) if we don't get usable data
+
     try:
-        current_time = time.time()
         if force_update or last_price_update == 0 or (current_time - last_price_update >= config['update_intervals']['price']): # If it's a force update, hasn't been updated, or the interval time has been met.
             current_price, daily_change, prices = get_bitcoin_price()
             # Cache the data after fetching
@@ -666,93 +943,29 @@ def update_price_chart(force_update=False):
         else:
             # Load from cache when not updating
             current_price, daily_change, prices = load_price_from_cache()
-        
+
         if prices and len(prices) > 0: # If we have price data and it's not empty
-                fig.clear()
-                ax = fig.add_subplot(111)
-                ax.set_facecolor('#202222') # Set the background color # Light gray background
-                fig.subplots_adjust(left=0.08, right=0.99, top=0.92, bottom=0.15) # Fix left margin for y-axis labels
-                
-                dates = [datetime.fromtimestamp(price[0]/1000) for price in prices]
-                values = [price[1] for price in prices]
+            render_price_chart(current_price, daily_change, prices)
+            last_price_update = current_time
+            next_delay_ms = time_until_next_aligned_update(config['update_intervals']['price']) * 1000
 
-                if viewing_mode == "static":
-                    # Full midnight-to-midnight EST (00:00-23:59)
-                    est = pytz.timezone('US/Eastern')
-                    now_est = datetime.now(est)
-                    today_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0)
-                    today_midnight_naive = today_midnight.replace(tzinfo=None)
-                    today_end = today_midnight.replace(hour=23, minute=59, second=59, microsecond=999999)
-                    today_end_naive = today_end.replace(tzinfo=None)
-                    
-                    # Filter to today only (plot data we have)
-                    plot_dates = [d for d in dates if today_midnight_naive <= d <= today_end_naive]
-                    plot_values = [v for d, v in zip(dates, values) if today_midnight_naive <= d <= today_end_naive]
-                    
-                else:  # rolling - use full data
-                    plot_dates = dates
-                    plot_values = values
-
-                ax.plot(plot_dates, plot_values, color='orange')
-                fig.patch.set_facecolor('#191A1A')  # Slightly darker gray for figure background
-                # title_color = ''
-                if daily_change >= 0:
-                    ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: +{daily_change}%", color='green', loc='left', fontsize=16)
-                    title_color = 'green'
-                else:
-                    ax.set_title(f"฿itcoin Price: ${current_price:,.0f} - 24h Change: -{abs(daily_change)}%", color='red', loc='left', fontsize=16)
-                    title_color = 'red'
-                # ax.set_xlabel("Time", color='white') # Do we really need this?
-                # ax.set_ylabel("Price (USD)", color='white') # Leaving incase someone does!
-
-                # Change axis colors to white
-                #TODO: Chang these to change with the title color based on positive or negative change.
-                ax.spines['top'].set_color(title_color)
-                ax.spines['bottom'].set_color(title_color)
-                ax.spines['left'].set_color(title_color)
-                ax.spines['right'].set_color(title_color)
-                
-                # Change tick parameters
-                ax.tick_params(axis='x', colors='white')  # X-axis ticks
-                ax.tick_params(axis='y', colors='white')  # Y-axis ticks
-                if time_series.lower() == "standard": # if time_series is set to standard
-                    ax.xaxis.set_major_formatter(mdates.DateFormatter('%-I:%M %p'))
-                else: # Otherwise, any other string returns military/Zulu.
-                    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-                
-                # Define the currency formatter
-                currency_formatter = mticker.FuncFormatter(lambda x, _: f'${x:,.0f}')
-                ax.yaxis.set_major_formatter(currency_formatter) # Set the y-axis major formatter
-                
-                fig.tight_layout(pad=0.5, h_pad=0.8, w_pad=0.5)  # Minimal padding, max chart space                # FINAL STATIC X-AXIS LOCK - after all styling
-                # Static full-day x-axis (LAST - overrides everything)
-                if viewing_mode == "static":
-                    est = pytz.timezone('US/Eastern')
-                    now_est = datetime.now(est)
-                    today_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0)
-                    today_midnight_naive = today_midnight.replace(tzinfo=None)
-                    today_end = today_midnight.replace(hour=23, minute=59, second=59)
-                    today_end_naive = today_end.replace(tzinfo=None)
-                    ax.set_xlim(today_midnight_naive, today_end_naive)
-                    ax.margins(x=0.01, y=0.05)  # Small x-padding to prevent clipping
-                canvas.draw()
-                
-                # Redraw node info if available
-                if previous_chain is not None:
-                    update_node_table(previous_chain, previous_network, previous_fees)
-                
-                # This is overwriting the interval setting for updates. Need to update every hour or on the interval, whichever is smallest.
-                last_price_update = current_time
-                if app_running:
-                    if price_timer_id is not None:
-                        root.after_cancel(price_timer_id)
-                    next_update_time = time_until_next_even_hour() * 1000
-                    price_timer_id = root.after(int(next_update_time), update_price_chart)  # Capture ID
+            # Redraw node info if available
+            if previous_chain is not None:
+                update_node_table(previous_chain, previous_network, previous_fees)
+        else:
+            logging.error("No price data available when updating price chart; will retry shortly.")
+            show_chart_message("No price data available.\nRetrying shortly.")
 
     except Exception as e:
         logging.error(f"Error updating price chart: {e}")
-         # If there's an error, try again in 5 minutes
-        root.after(300000, update_price_chart)
+        show_chart_message("Error loading price data.")
+    finally:
+        # Always reschedule, whether this run succeeded, found no data, or errored,
+        # so the chart never gets permanently stuck.
+        if app_running:
+            if price_timer_id is not None:
+                root.after_cancel(price_timer_id)
+            price_timer_id = root.after(int(next_delay_ms), update_price_chart)
 def get_node_info(rpc_connection):
     try:
         blockchain_info = rpc_connection.getblockchaininfo()
@@ -818,7 +1031,7 @@ def update_node_table(blockchain_data, network_data, fees):
         verificationProgress = TextArea(f"{blockchain_verification_progress}", textprops=dict(color=sync_color, fontsize=12))
         difficultyName = TextArea(f"Difficulty: ", textprops=dict(color='white', fontsize=12))
         difficultyNumber = TextArea(f"{formatted_difficulty}", textprops=dict(color='yellow', fontsize=12))
-        low_fee, medium_fee, high_fee = fees
+        low_fee, medium_fee, high_fee = fees if fees else (None, None, None)
         if low_fee and medium_fee and high_fee:
             feeText = TextArea("Fees (sat/vB): ", textprops=dict(color='white', fontsize=12))
             feeNumbers = TextArea(f"L:{low_fee:,} M:{medium_fee:,} H:{high_fee:,}", textprops=dict(color='yellow', fontsize=12))
@@ -844,8 +1057,6 @@ def update_node_table(blockchain_data, network_data, fees):
         anchored_box.patch.set_boxstyle("round,pad=0.5")
         anchored_box.patch.set_facecolor('black')
         anchored_box.patch.set_alpha(0.5)
-        for artist in ax.texts: # Clear previous text
-            artist.remove()
         # Remove old boxes
         for child in ax.get_children():
             if isinstance(child, AnchoredOffsetbox):
@@ -868,37 +1079,29 @@ def update_blockchain_info(force_update=False):
     global app_running, root, last_blockchain_update, blockchain_chain, blockchain_blocks, blockchain_verification_progress, node_connections, cpu_temp, previous_chain, previous_network, previous_fees, saved_timestamp, blockchain_timer_id
     if not app_running:
         return  # Don't do anything if the app is not running
-    # Trying to pass in blockchain and network info to this update function.
     current_time = time.time()
-    if force_update or (current_time - last_blockchain_update >= config['update_intervals']['blockchain']): # 600 seconds = 10 minutes
-        if saved_timestamp == get_timestamp():
-            print("Node not available - Check node connection!")
-            logging.error(f"Error connecting to RPC Node. {saved_timestamp}")
-        else:
-            try: # Let's update info
-                new_chain_info, new_network_info, fees = get_node_info(rpc_connection)
-                saved_timestamp = get_timestamp()
-                # If successful go to bottom to call update_node_table function
-                update_node_table(new_chain_info, new_network_info, fees) # Call the update function if we're able to connect
-                # Store previous values
-                previous_chain = new_chain_info         # Update variable with newest data
-                previous_network = new_network_info     # Update variable with newest data
-                previous_fees = fees
-                last_blockchain_update = current_time   # Update the last update time before exiting udpate function                
-                # next_update_time = time_until_next_10min() * 1000  # Next 10-min mark
-                # root.after(next_update_time, update_blockchain_info)
-                if app_running:
-                    if blockchain_timer_id is not None:
-                        root.after_cancel(blockchain_timer_id)
-                    next_update_time = time_until_next_10min() * 1000
-                    blockchain_timer_id = root.after(int(next_update_time), update_blockchain_info)
-                return  # Exit early after scheduling
-            except Exception as e: # Failure of RPC connection here
-                    logging.error(f"{get_timestamp()} - Error updating blockchain info: Expected on first try. {e}")
-                    try: # Attempt to reconnect
-                        update_blockchain_info() # Retry the blockchain pull
-                    except Exception as e:
-                        logging.error(f"{get_timestamp()} - UNEXPECTED - Failed to reconnect. Will try again in the next update. {e}")
+    if not (force_update or (current_time - last_blockchain_update >= config['update_intervals']['blockchain'])): # 600 seconds = 10 minutes
+        return  # Not due yet
+
+    try: # Let's update info
+        new_chain_info, new_network_info, fees = get_node_info(rpc_connection)
+        saved_timestamp = get_timestamp()
+        # If successful go to bottom to call update_node_table function
+        update_node_table(new_chain_info, new_network_info, fees) # Call the update function if we're able to connect
+        # Store previous values
+        previous_chain = new_chain_info         # Update variable with newest data
+        previous_network = new_network_info     # Update variable with newest data
+        previous_fees = fees
+        last_blockchain_update = current_time   # Update the last update time before exiting udpate function
+        next_delay_ms = time_until_next_aligned_update(config['update_intervals']['blockchain']) * 1000
+    except Exception as e: # Failure of RPC connection, or bad data returned from it
+        logging.error(f"{get_timestamp()} - Error updating blockchain info: {e}")
+        next_delay_ms = 60000  # Retry in 1 minute rather than recursing immediately
+
+    if app_running:
+        if blockchain_timer_id is not None:
+            root.after_cancel(blockchain_timer_id)
+        blockchain_timer_id = root.after(int(next_delay_ms), update_blockchain_info)
 
 def format_difficulty(difficulty):
     if difficulty >= 1_000_000_000_000:  # If it's in trillions
@@ -910,26 +1113,9 @@ def format_difficulty(difficulty):
     else:
         return f"{difficulty:,.2f}"
 
-# Create and run the display
-try:
-    root = create_display() # Initial call
-    # root.config(cursor="none") # Get rid of that blasted cursor!
-    update_price_chart()
-    update_blockchain_info()
-    root.mainloop()
-except tk.TclError as e: # Catch when DISPLAY is not setup correctly.
-    logging.error(f"An error occured while creating the display. {e} \n Normally this can be fixed by adding 'DISPLAY=:0.0' to bitcoin_env/bin/activate line 38. ")
-except KeyboardInterrupt as e: # Catch when user interupts program.
-    logging.error(f"User interupted program. {e}. Are you trying to start remotely? Use 'nohup' before running. 'nohup python3 piDisplay.py'")
-except Exception as e: # Catch all other errors here.
-    logging.error(f"An error occurred when initializing the app. {e}")
-
 def main():
     global root
     try:
-        # Initialize price cache on startup
-        initialize_price_cache()
-        
         root = create_display()
         update_display() # Start the scheduling loop
         

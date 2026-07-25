@@ -2,17 +2,20 @@
     "connect_to": "NUC1",
     "time_series": "military",
     "update_intervals": {
-        "__comment": "These are in seconds",
-        "price": 3600,
+        "__comment": "These are in seconds. price is derived from color_scheme_interval, not set here.",
         "blockchain": 600
     },
-    "viewing_mode": "static", 
+    "viewing_mode": "rolling",
+    "__viewing_mode": "static, rolling",
+    "color_scheme": "dynamic",
+    "chart_type": "baseline",
+    "__chart_type_options": "line, candlestick, baseline",
+    "color_scheme_interval": "15min",
+    "__color_scheme_interval_options": "daily, hourly, 15min, 5min (also sets candlestick width). 5min is the finest resolution CoinGecko's free tier provides.",
     "testing": false,
-
     "cache_file": "bitcoin_price_cache.json",
     "log_file": "/home/satoshi/Desktop/bitcoin_display.log",
-    "testing_log_file":"C:/dev/repository/btc_piDisplay/bitcoin_display.log",
-    
+    "testing_log_file": "C:/dev/repository/btc_piDisplay/bitcoin_display.log",
     "rpc_settings": {
         "NUC1": {
             "rpc_user": "satoshi",
