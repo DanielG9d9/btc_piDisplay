@@ -107,6 +107,10 @@ long_press_duration = 2
 price_timer_id = None
 blockchain_timer_id = None
 display_timer_id = None
+# Timestamp of the last time the countdown-triggered update was fired. Used
+# to avoid repeatedly forcing updates during the ~1s window where the
+# countdown displays "00:00" as update_countdown runs every 100ms.
+last_countdown_trigger_time = 0
 current_screen = "main"  # "main" or "more"
 chart_frame = None
 more_fig = None
@@ -633,8 +637,13 @@ def time_until_next_aligned_update(interval_seconds):
         next_boundary = hour_start + timedelta(hours=1)
     return (next_boundary - now).total_seconds()
 def update_countdown():
-    """Update the countdown label with time until next price update (updates 10x per second for smooth animation)"""
-    global countdown_label, app_running, root
+    """Update the countdown label with time until next price update (updates 10x per second for smooth animation)
+
+    When the countdown reaches the aligned update boundary, force a price update
+    once to ensure the chart is redrawn immediately instead of relying solely on
+    the scheduled timer. Uses last_countdown_trigger_time to avoid repeated
+    triggers while the countdown shows 00:00 across multiple 100ms ticks."""
+    global countdown_label, app_running, root, last_countdown_trigger_time
     
     if countdown_label is None or root is None:
         return
@@ -649,7 +658,18 @@ def update_countdown():
         
         countdown_text = f"{minutes:02d}:{secs:02d}"
         countdown_label.config(text=countdown_text)
-        
+
+        # If we're very close to the boundary, trigger an immediate update once.
+        # This guarantees the display is refreshed right when the countdown hits 00:00.
+        if seconds_remaining <= 0.5:
+            now = time.time()
+            if now - last_countdown_trigger_time > 1.0:
+                last_countdown_trigger_time = now
+                try:
+                    update_price_chart(force_update=True)
+                except Exception as e:
+                    logging.error(f"Error forcing price update from countdown: {e}")
+
         # Update 10 times per second for smooth real-time countdown (every 100ms)
         if app_running:
             root.after(100, update_countdown)
@@ -657,7 +677,7 @@ def update_countdown():
         logging.error(f"Error updating countdown: {e}")
         try:
             countdown_label.config(text="--:--")
-        except:
+        except:   
             pass
 
 def get_fee_estimates(rpc_connection):
@@ -1082,7 +1102,8 @@ def get_node_info(rpc_connection):
 def update_node_table(blockchain_data, network_data, fees):
     # Store blockchain info in global variables
     blockchain_chain = blockchain_data['chain']
-    blockchain_blocks = f"{blockchain_data['blocks']}/{blockchain_data['headers']}"
+    # Format blocks and headers with thousands separators (e.g. 960,015)
+    blockchain_blocks = f"{blockchain_data['blocks']:,}/{blockchain_data['headers']:,}"
     blockchain_verification_progress = f"{blockchain_data['verificationprogress'] * 100:.2f}%"
     #TODO: 
     # node_connections = f"{network_data['connections']}"
