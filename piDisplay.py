@@ -49,7 +49,7 @@ if args.static:
 time_series = config['time_series'].lower()
 viewing_mode = config.get('viewing_mode', 'rolling').lower()
 color_scheme = config.get('color_scheme', 'static').lower()  # 'static' = fixed accent, 'dynamic' = green/red by price direction
-COLOR_SCHEME_INTERVAL_MINUTES = {'daily': 1440, 'hourly': 60, '15min': 15, '5min': 5}
+COLOR_SCHEME_INTERVAL_MINUTES = {'daily': 1440, 'hourly': 60, '30min': 30, '15min': 15, '5min': 5}
 color_scheme_interval = config.get('color_scheme_interval', 'hourly').lower()
 color_scheme_interval_minutes = COLOR_SCHEME_INTERVAL_MINUTES.get(color_scheme_interval, 60)
 chart_type = config.get('chart_type', 'line').lower()  # 'line' or 'candlestick'
@@ -127,7 +127,7 @@ SETTINGS_OPTIONS = {
     'viewing_mode': ['static', 'rolling'],
     'color_scheme': ['static', 'dynamic'],
     'chart_type': ['line', 'candlestick', 'baseline'],
-    'color_scheme_interval': ['daily', 'hourly', '15min', '5min'],
+    'color_scheme_interval': ['daily', 'hourly', '30min', '15min', '5min'],
 }
 SETTINGS_LABELS = {
     'viewing_mode': 'Viewing Mode',
