@@ -1053,7 +1053,8 @@ def update_price_chart(force_update=False):
     next_delay_ms = 300000  # Default retry delay (5 min) if we don't get usable data
 
     try:
-        if force_update or last_price_update == 0 or (current_time - last_price_update >= config['update_intervals']['price']): # If it's a force update, hasn't been updated, or the interval time has been met.
+        did_fetch = force_update or last_price_update == 0 or (current_time - last_price_update >= config['update_intervals']['price']) # If it's a force update, hasn't been updated, or the interval time has been met.
+        if did_fetch:
             current_price, daily_change, prices = get_bitcoin_price()
             # Cache the data after fetching
             if current_price is not None:
@@ -1070,7 +1071,13 @@ def update_price_chart(force_update=False):
 
         if prices and len(prices) > 0: # If we have price data and it's not empty
             render_price_chart(current_price, daily_change, prices)
-            last_price_update = current_time
+            # Only stamp last_price_update when we actually fetched fresh data.
+            # Re-stamping on a cache-only render (not due yet) would perpetually
+            # skew this timestamp forward by whatever latency the previous fetch
+            # took, so current_time - last_price_update would never clear the
+            # interval again and the price would silently stop refreshing.
+            if did_fetch:
+                last_price_update = current_time
             next_delay_ms = time_until_next_aligned_update(config['update_intervals']['price']) * 1000
 
             # Redraw node info if available
