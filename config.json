@@ -1,33 +1,46 @@
 {
+    "connect_to": "NUC1",
+    "time_series": "military",
+    "update_intervals": {
+        "__comment": "These are in seconds. price is derived from color_scheme_interval, not set here.",
+        "blockchain": 600
+    },
+    "viewing_mode": "rolling",
+    "__viewing_mode": "static, rolling",
+    "color_scheme": "dynamic",
+    "chart_type": "candlestick",
+    "__chart_type_options": "line, candlestick, baseline",
+    "color_scheme_interval": "hourly",
+    "__color_scheme_interval_options": "daily, hourly, 30min, 15min, 5min (also sets candlestick width). 5min is the finest resolution CoinGecko's free tier provides.",
+    "__color_scheme_interval_mapping": {
+        "daily": 1440,
+        "hourly": 60,
+        "30min": 30,
+        "15min": 15,
+        "5min": 5
+    },
+    "__example_update_intervals": {
+        "note": "Price update interval is derived from color_scheme_interval. The app will set update_intervals.price automatically on startup.",
+        "price_seconds_for_30min": 1800,
+        "price_seconds_for_hourly": 3600,
+        "blockchain_seconds": 600
+    },
+    "testing": false,
+    "cache_file": "bitcoin_price_cache.json",
+    "log_file": "/home/satoshi/Desktop/bitcoin_display.log",
+    "testing_log_file": "C:/dev/repository/btc_piDisplay/bitcoin_display.log",
     "rpc_settings": {
+        "NUC1": {
+            "rpc_user": "satoshi",
+            "rpc_host": "192.168.86.53",
+            "rpc_password": "Waffle9d9RPC123PaSSw0rd",
+            "rpc_port": "8332"
+        },
         "raspiblitz": {
             "rpc_user": "raspibolt",
             "rpc_host": "192.168.86.68",
             "rpc_password": "Waffle9d9RPC123PaSSw0rd",
             "rpc_port": "8332"
-        },
-        "parmanode": {
-            "rpc_user": "parman",
-            "rpc_host": "192.168.86.49",
-            "rpc_password": "parman",
-            "rpc_port": "8332"
-        },
-        "laptop-node": {
-            "rpc_user": "satoshi",
-            "rpc_host": "192.168.86.63",
-            "rpc_password": "Waffle9d9RPC123PaSSw0rd",
-            "rpc_port": "8332" 
         }
-    },
-    "connect_to": "raspiblitz",
-    "time_series": "military",
-    "update_intervals": {
-        "__comment": "These are in seconds",
-        "price": 3600,
-        "blockchain": 600
-    },
-    "cache_file": "bitcoin_price_cache.json",
-    "log_file": "/home/satoshi/Desktop/bitcoin_display.log",
-    "testing_log_file":"C:/dev/repository/btc_piDisplay/bitcoin_display.log",
-    "testing": false
+    }
 }

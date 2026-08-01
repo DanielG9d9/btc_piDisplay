@@ -53,7 +53,7 @@ read -p "Would you like to do that now? (Y/N): " user_input
 if [ "${user_input^^}" = "Y" ]; then
     echo "########################################################################"
     echo "Update rpc_settings with your node information here!"
-    echo "You may delete any extra examples if you wish! There are three in rpc_settings."
+    echo "You may delete any extra examples if you wish! There are two in rpc_settings."
     echo "Next, update the 'connect_to' variable to the name you used in rpc_settings."
     echo "'update_intervals' should be updated with SECONDS between refreshes. Example: 60 = refresh every 60 seconds."
     printf "Update log_file path with your name ($USER) if not satoshi."
