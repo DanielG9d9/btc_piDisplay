@@ -1,28 +1,64 @@
 # Built by Danny Blue-Eyes
-from matplotlib.offsetbox import AnchoredOffsetbox, TextArea, VPacker, HPacker, OffsetImage
-from matplotlib.colors import LinearSegmentedColormap, Normalize
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from bitcoinrpc.authproxy import AuthServiceProxy
-from matplotlib.collections import LineCollection
 from datetime import datetime, timedelta
-import matplotlib.ticker as mticker
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
-from dotenv import load_dotenv
-from tkinter import ttk
-import tkinter as tk
-import numpy as np
 import subprocess
-import platform
-import requests
 import argparse
+import platform
 import logging
 import pathlib
-import qrcode
 import json
 import time
-import pytz
+import sys
 import os
+
+BASE_DIR = pathlib.Path(__file__).resolve().parent
+
+def _fatal_startup_error(message):
+    """Log a startup error to bitcoin_display.log and exit. Used for failures
+    that happen before the real logging config exists (it depends on
+    config.json having loaded successfully), so it always writes to the
+    default path in the repo directory rather than losing the message."""
+    logging.basicConfig(
+        filename=str(BASE_DIR / "bitcoin_display.log"),
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    logging.error(message)
+    print(message, file=sys.stderr)
+    sys.exit(1)
+
+# Everything below is a third-party dependency from requirements.txt (plus
+# tkinter, which needs the OS-level python3-tk package on some distros and
+# isn't pip-installable). If the venv was never created, or was created but
+# requirements were never installed, fail with a clear pointer to install.sh
+# instead of a raw traceback — and get that pointer into bitcoin_display.log
+# too, since a headless/auto-started launch may have no visible console.
+try:
+    from matplotlib.offsetbox import AnchoredOffsetbox, TextArea, VPacker, HPacker, OffsetImage
+    from matplotlib.colors import LinearSegmentedColormap, Normalize
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    from bitcoinrpc.authproxy import AuthServiceProxy
+    from matplotlib.collections import LineCollection
+    import matplotlib.ticker as mticker
+    import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
+    from dotenv import load_dotenv
+    from tkinter import ttk
+    import tkinter as tk
+    import numpy as np
+    import requests
+    import qrcode
+    import pytz
+except ImportError as e:
+    missing = e.name or str(e)
+    _fatal_startup_error(
+        f"Missing dependency '{missing}'. The virtual environment is either not set up "
+        "or is missing packages.\n"
+        "Fix: re-run install.sh from the project root (bash install.sh) to (re)create "
+        "bitcoin_env and install requirements.txt.\n"
+        "If the missing package is 'tkinter', install it at the OS level instead: "
+        "sudo apt-get install python3-tk."
+    )
 
 IS_PI = platform.machine().startswith("arm") or platform.machine().startswith("aarch")
 # Parse command line args FIRST
@@ -33,81 +69,69 @@ parser.add_argument('--config', type=str, help='Path to config file')
 args = parser.parse_args()
 
 # Use CLI --config first, then find config.json, then set defaults
-BASE_DIR = pathlib.Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")  # RPC credentials live here, not in config.json (which is committed to git)
 config_path = args.config or os.environ.get('PIDISPLAY_CONFIG')
 if not config_path:
     config_path = str(BASE_DIR / "config.json")
 
-with open(config_path, 'r') as config_file:
-    config = json.load(config_file)
+try:
+    with open(config_path, 'r') as config_file:
+        config = json.load(config_file)
+except FileNotFoundError:
+    _fatal_startup_error(
+        f"Config file not found at '{config_path}'. Fix: re-run install.sh (it seeds "
+        "config.json from the repo default), or check the --config/PIDISPLAY_CONFIG path."
+    )
+except json.JSONDecodeError as e:
+    _fatal_startup_error(f"Config file '{config_path}' is not valid JSON: {e}")
 
-# CLI --testing OVERRIDES config.json
-# CLI args OVERRIDE config.json
-if args.testing:
-    config['testing'] = True
-if args.static:
-    viewing_mode = 'static'  # CLI flag overrides config
+try:
+    # CLI --testing OVERRIDES config.json
+    # CLI args OVERRIDE config.json
+    if args.testing:
+        config['testing'] = True
+    if args.static:
+        viewing_mode = 'static'  # CLI flag overrides config
 
-# Use configuration values
-time_series = config['time_series'].lower()
-viewing_mode = config.get('viewing_mode', 'rolling').lower()
-color_scheme = config.get('color_scheme', 'static').lower()  # 'static' = fixed accent, 'dynamic' = green/red by price direction
-COLOR_SCHEME_INTERVAL_MINUTES = {'daily': 1440, 'hourly': 60, '30min': 30, '15min': 15, '5min': 5}
-color_scheme_interval = config.get('color_scheme_interval', 'hourly').lower()
-color_scheme_interval_minutes = COLOR_SCHEME_INTERVAL_MINUTES.get(color_scheme_interval, 60)
-chart_type = config.get('chart_type', 'line').lower()  # 'line' or 'candlestick'
-ALTERNATING_INTERVAL_SECONDS = {'30s': 30, '1m': 60, '5m': 300}
-chart_alternating = config.get('chart_alternating', 'off').lower()  # 'off' or 'on'
-chart_alternating_interval = config.get('chart_alternating_interval', '30s').lower()
-chart_alternating_interval_seconds = ALTERNATING_INTERVAL_SECONDS.get(chart_alternating_interval, 30)
+    # Use configuration values
+    time_series = config['time_series'].lower()
+    viewing_mode = config.get('viewing_mode', 'rolling').lower()
+    color_scheme = config.get('color_scheme', 'static').lower()  # 'static' = fixed accent, 'dynamic' = green/red by price direction
+    COLOR_SCHEME_INTERVAL_MINUTES = {'daily': 1440, 'hourly': 60, '30min': 30, '15min': 15, '5min': 5}
+    color_scheme_interval = config.get('color_scheme_interval', 'hourly').lower()
+    color_scheme_interval_minutes = COLOR_SCHEME_INTERVAL_MINUTES.get(color_scheme_interval, 60)
+    chart_type = config.get('chart_type', 'line').lower()  # 'line' or 'candlestick'
+    ALTERNATING_INTERVAL_SECONDS = {'15s': 15, '30s': 30, '1m': 60}
+    chart_alternating = config.get('chart_alternating', 'off').lower()  # 'off' or 'on'
+    chart_alternating_interval = config.get('chart_alternating_interval', '30s').lower()
+    chart_alternating_interval_seconds = ALTERNATING_INTERVAL_SECONDS.get(chart_alternating_interval, 30)
 
-# Price refresh cadence always matches color_scheme_interval, so a 5-minute
-# interval both fetches and displays fresh data every 5 minutes — no separate
-# setting to keep in sync.
-config['update_intervals']['price'] = color_scheme_interval_minutes * 60
-testing = config['testing']
+    # Price refresh cadence always matches color_scheme_interval, so a 5-minute
+    # interval both fetches and displays fresh data every 5 minutes — no separate
+    # setting to keep in sync.
+    config['update_intervals']['price'] = color_scheme_interval_minutes * 60
+    testing = config['testing']
 
-connect_to = config['connect_to']
-# RPC credentials for the selected node come from .env (RPC_<NAME>_USER/HOST/PASSWORD/PORT),
-# never from config.json — config.json is committed to git, .env is gitignored.
-_env_prefix = f"RPC_{connect_to.upper()}"
-rpc_user = os.environ.get(f"{_env_prefix}_USER")
-rpc_host = os.environ.get(f"{_env_prefix}_HOST")
-rpc_password = os.environ.get(f"{_env_prefix}_PASSWORD")
-rpc_port = os.environ.get(f"{_env_prefix}_PORT")
-if not all([rpc_user, rpc_host, rpc_password, rpc_port]):
-    if testing:
-        # Testing mode never actually calls rpc_connection (dummy data is used
-        # instead), so missing credentials shouldn't block --testing runs on a
-        # desktop with no .env configured.
-        rpc_user, rpc_host, rpc_password, rpc_port = "testing", "localhost", "testing", "8332"
-    else:
-        raise SystemExit(
-            f"Missing RPC credentials for '{connect_to}' in .env. Expected "
-            f"{_env_prefix}_USER, {_env_prefix}_HOST, {_env_prefix}_PASSWORD, and {_env_prefix}_PORT "
-            f"(see .env.example)."
-        )
+    connect_to = config['connect_to']
+    # Relative cache/log paths are resolved against the repo directory (BASE_DIR),
+    # not the process's working directory, so they land in the repo regardless of
+    # where the launching script `cd`s to (e.g. install.sh's Desktop launcher).
+    CACHE_FILE = str(BASE_DIR / config['cache_file'])
+    MINING_CACHE_FILE = str(BASE_DIR / config.get('mining_cache_file', 'bitcoin_mining_cache.json'))
+    # How much hashrate/difficulty history to pull for the mining chart. One of
+    # mempool.space's fixed periods: 3d, 1w, 1m, 3m, 6m, 1y, 2y, 3y, all.
+    MINING_CHART_PERIOD = config.get('mining_chart_period', '1y')
+    log_file = config['testing_log_file'] if testing else config['log_file']
+except KeyError as e:
+    _fatal_startup_error(
+        f"Config file '{config_path}' is missing required key: {e}. "
+        "Compare it against the repo's config.json, or re-run install.sh."
+    )
 
-# Optional receive address for the QR panel on the Node screen. Lives in .env
-# rather than config.json for the same reason RPC creds do — config.json is
-# committed to git, .env is not. Absent means the QR panel is simply skipped.
-wallet_address = os.environ.get('WALLET_ADDRESS', '').strip() or None
-# .env.example ships this as the live default (the project author's own
-# address) rather than blank, so a "Buy me a coffee" note is shown under the
-# QR code specifically when that default hasn't been changed.
-DEFAULT_WALLET_ADDRESS = "1FpaYV2cTk1W7WtHhsRP2kuNtKynNbeGoH"
-# Relative cache/log paths are resolved against the repo directory (BASE_DIR),
-# not the process's working directory, so they land in the repo regardless of
-# where the launching script `cd`s to (e.g. install.sh's Desktop launcher).
-CACHE_FILE = str(BASE_DIR / config['cache_file'])
-MINING_CACHE_FILE = str(BASE_DIR / config.get('mining_cache_file', 'bitcoin_mining_cache.json'))
-# How much hashrate/difficulty history to pull for the mining chart. One of
-# mempool.space's fixed periods: 3d, 1w, 1m, 3m, 6m, 1y, 2y, 3y, all.
-MINING_CHART_PERIOD = config.get('mining_chart_period', '1y')
-
-# Set up logging
-log_file = config['testing_log_file'] if testing else config['log_file']
+# Set up logging. This happens before the RPC credential check below so a
+# missing/incomplete .env is written to bitcoin_display.log too, not just
+# printed to a console that may not exist (e.g. launched via the systemd
+# service or install.sh's nohup launcher).
 if not os.path.isabs(log_file):
     log_file = str(BASE_DIR / log_file)
 log_kwargs = dict(
@@ -123,8 +147,47 @@ except OSError:
     logging.basicConfig(filename=fallback_log, **log_kwargs)
     logging.warning(f"Could not open configured log file '{log_file}'; falling back to '{fallback_log}'.")
 
+# RPC credentials for the selected node come from .env (RPC_<NAME>_USER/HOST/PASSWORD/PORT),
+# never from config.json — config.json is committed to git, .env is gitignored.
+_env_prefix = f"RPC_{connect_to.upper()}"
+rpc_user = os.environ.get(f"{_env_prefix}_USER")
+rpc_host = os.environ.get(f"{_env_prefix}_HOST")
+rpc_password = os.environ.get(f"{_env_prefix}_PASSWORD")
+rpc_port = os.environ.get(f"{_env_prefix}_PORT")
+if not all([rpc_user, rpc_host, rpc_password, rpc_port]):
+    if testing:
+        # Testing mode never actually calls rpc_connection (dummy data is used
+        # instead), so missing credentials shouldn't block --testing runs on a
+        # desktop with no .env configured.
+        rpc_user, rpc_host, rpc_password, rpc_port = "testing", "localhost", "testing", "8332"
+    else:
+        message = (
+            f"Missing RPC credentials for '{connect_to}' in .env. Expected "
+            f"{_env_prefix}_USER, {_env_prefix}_HOST, {_env_prefix}_PASSWORD, and {_env_prefix}_PORT "
+            "(see .env.example). Fix: re-run install.sh and fill in .env when prompted, "
+            "or add the values to .env yourself."
+        )
+        logging.error(message)
+        raise SystemExit(message)
+
+# Optional receive address for the QR panel on the Node screen. Lives in .env
+# rather than config.json for the same reason RPC creds do — config.json is
+# committed to git, .env is not. Absent means the QR panel is simply skipped.
+wallet_address = os.environ.get('WALLET_ADDRESS', '').strip() or None
+# .env.example ships this as the live default (the project author's own
+# address) rather than blank, so a "Buy me a coffee" note is shown under the
+# QR code specifically when that default hasn't been changed.
+DEFAULT_WALLET_ADDRESS = "1FpaYV2cTk1W7WtHhsRP2kuNtKynNbeGoH"
+
 # RPC connection
-rpc_connection = AuthServiceProxy(f"http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}", timeout=30)
+try:
+    rpc_connection = AuthServiceProxy(f"http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}", timeout=30)
+except Exception as e:
+    logging.error(
+        f"Could not create RPC connection for '{connect_to}' ({rpc_host}:{rpc_port}): {e}. "
+        "Check the RPC_* values in .env, and that the node is reachable from this machine."
+    )
+    raise SystemExit(1)
 
 # Global Variables (Globals)
 last_price_update = 0 # Variable for tracking when to update price
@@ -167,7 +230,7 @@ SETTINGS_OPTIONS = {
     'chart_type': ['line', 'candlestick', 'baseline'],
     'color_scheme_interval': ['daily', 'hourly', '30min', '15min', '5min'],
     'chart_alternating': ['off', 'on'],
-    'chart_alternating_interval': ['30s', '1m', '5m'],
+    'chart_alternating_interval': ['15s', '30s', '1m'],
 }
 SETTINGS_LABELS = {
     'viewing_mode': 'Viewing Mode',
@@ -1874,10 +1937,12 @@ def main():
             f"An error occurred while creating the display. {e} "
             "If running headless, ensure DISPLAY is set correctly."
         )
-    except KeyboardInterrupt as e:
-        logging.error(f"User interrupted program. {e}")
-    except Exception as e:
-        logging.error(f"An error occurred when initializing the app. {e}")
+    except KeyboardInterrupt:
+        logging.info("User interrupted program (Ctrl+C).")
+    except Exception:
+        # Full traceback (not just str(e)) so the log actually shows the root
+        # cause when something unanticipated goes wrong during startup/runtime.
+        logging.exception("An unexpected error occurred while running the app.")
 
 if __name__ == "__main__":
     main()

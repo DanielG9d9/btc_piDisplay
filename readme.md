@@ -76,7 +76,7 @@ If you'd rather not type the `git clone`/`install.sh` commands over SSH at all, 
 Imager applies the "Customisation" settings from step 5 (hostname, user account, WiFi, SSH) via a declarative file called `custom.toml`, written to the boot partition. `custom.toml` only knows how to apply those specific settings — it has no hook for running arbitrary shell commands, and there is no `firstrun.sh` on the card by default. To get the auto-clone-on-first-boot behavior, you need to create your own `firstrun.sh` and wire it up via `cmdline.txt`, using the kernel's generic `systemd.run=` first-boot mechanism:
 
 1. After Imager finishes writing the card, re-insert it into your computer (or leave it mounted) and open the boot partition — it'll be named `bootfs` or `boot`.
-2. Create a new file at the root of that partition named `firstrun.sh` containing (replacing `pi` with whichever username you set in step 5 (You need to do this on line 4 & 7)):
+2. Create a new file at the root of that partition named `firstrun.sh` containing (replacing `pi` with whichever username you set in step 5 (You need to do this on line 2,4, & 7)):
     ```bash
     #!/bin/bash
     su - pi -c '
@@ -149,7 +149,7 @@ To show a receive QR code next to Node metrics, set `WALLET_ADDRESS` in `.env` t
 | `blockchain` | Seconds to update -> 10-minutes = '600' |
 | `viewing_mode` | 'Rolling' or 'Static' - Rolling will always show full 24 hours of price data. Static will start at midnight and update with new price data until it resets the following day at midnight. |
 | `chart_alternating` | 'off' or 'on' - When on, the main screen automatically alternates between the price chart and the mining dashboard. Also toggleable from Display Settings. |
-| `chart_alternating_interval` | '30s', '1m', or '5m' - How often the main screen switches when `chart_alternating` is on. |
+| `chart_alternating_interval` | '15s', '30s', or '1m' - How often the main screen switches when `chart_alternating` is on. |
 | `testing` | Specify if testing so the program will use fake data and work on a desktop display. Can also pass --testing in start command: ```python piDisplay.py --testing``` |
     
 ## Auto-Start On Boot

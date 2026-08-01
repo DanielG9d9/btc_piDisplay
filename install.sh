@@ -129,7 +129,7 @@ else
     if grep -q '^WALLET_ADDRESS=' .env; then
         sed -i "s|^WALLET_ADDRESS=.*|WALLET_ADDRESS=|" .env
     fi
-    echo "Skipped — no QR code will be shown. Add WALLET_ADDRESS to .env any time to turn it on."
+    echo "Skipped — Developer's default QR code will be shown. Add WALLET_ADDRESS to .env any time to display your own address!"
 fi
 echo "########################################################################"
 for i in {1..3}; do # Sleep for 3 seconds.
