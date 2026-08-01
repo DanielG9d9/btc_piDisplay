@@ -16,7 +16,7 @@ My build consists of a raspberry pi 4 (8gb), 1 TB HHD, and a 5" display from [Am
 
 | Settings | Node Metrics |
 |---|---|
-| ![Display Settings](screenshots/display_settings.png) | ![Node Metrics](screenshots/nodemetrics_dummy.png) |
+| ![Display Settings](screenshots/display_settings.png) | ![Node Metrics](screenshots/node_metrics.png) |
 
 ## Table of Contents
 
@@ -91,7 +91,7 @@ Imager applies the "Customisation" settings from step 5 (hostname, user account,
     sed -i 's| systemd.run.*||' /boot/firmware/cmdline.txt
     exit 0
     ```
-    The piped `Y` answers "yes" to enabling auto-start on boot; the `N` skips the interactive `nano config.json` prompt, since there's no terminal attached during first boot. The last two lines clean up after themselves so the script doesn't try to re-run on every subsequent boot.
+    The piped `Y` answers "yes" to enabling auto-start on boot; the `N` skips the interactive `nano config.json` prompt, since there's no terminal attached during first boot. `install.sh` also asks for a receive address afterwards, but with no terminal attached that prompt just reads EOF and gets treated as blank — same as pressing Enter to skip it — so no third answer is needed here; add `WALLET_ADDRESS` to `.env` by hand later if you want the QR code. The last two lines clean up after themselves so the script doesn't try to re-run on every subsequent boot.
 3. Open `cmdline.txt`, which already exists at the root of the boot partition (Imager writes it for every card). It's a single line with no trailing newline — carefully append the following to the *end* of that existing line, separated by a space, without adding a line break:
     ```
     systemd.run=/boot/firmware/firstrun.sh systemd.run_success_action=reboot systemd.unit=kernel-command-line.target
@@ -135,6 +135,8 @@ RPC credentials live in `.env`, not `config.json` — `config.json` is committed
 ### Receive QR code (optional)
 
 To show a receive QR code next to Node metrics, set `WALLET_ADDRESS` in `.env` to a Bitcoin receive address (not an xpub). Leave it unset to skip the QR panel entirely. Like the RPC credentials, it lives in `.env` rather than `config.json` since `config.json` is committed to git.
+
+`install.sh` will also ask for this address directly and write it to `.env` for you — just press Enter to skip it if you don't have one ready yet. You can always set or change it later by editing `WALLET_ADDRESS` in `.env` yourself.
 
 ### Customizing the config file!  
 

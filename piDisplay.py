@@ -1,24 +1,26 @@
 # Built by Danny Blue-Eyes
-from matplotlib.offsetbox import AnchoredOffsetbox, TextArea, VPacker, HPacker
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.offsetbox import AnchoredOffsetbox, TextArea, VPacker, HPacker, OffsetImage
 from matplotlib.colors import LinearSegmentedColormap, Normalize
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from bitcoinrpc.authproxy import AuthServiceProxy
-from matplotlib.offsetbox import AnchoredText
 from matplotlib.collections import LineCollection
+from matplotlib.offsetbox import AnchoredText
 from datetime import datetime, timedelta
 import matplotlib.ticker as mticker
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
+from dotenv import load_dotenv
 from datetime import datetime
 from tkinter import ttk
 import tkinter as tk
+import numpy as np
 import subprocess
 import platform
 import requests
 import argparse
 import logging
 import pathlib
-import numpy as np
+import qrcode
 import json
 import time
 import pytz
@@ -34,6 +36,7 @@ args = parser.parse_args()
 
 # Use CLI --config first, then find config.json, then set defaults
 BASE_DIR = pathlib.Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")  # RPC credentials live here, not in config.json (which is committed to git)
 config_path = args.config or os.environ.get('PIDISPLAY_CONFIG')
 if not config_path:
     config_path = str(BASE_DIR / "config.json")
@@ -68,11 +71,34 @@ config['update_intervals']['price'] = color_scheme_interval_minutes * 60
 testing = config['testing']
 
 connect_to = config['connect_to']
-rpc_settings = config['rpc_settings'][connect_to]
-rpc_user = rpc_settings['rpc_user']
-rpc_host = rpc_settings['rpc_host']
-rpc_password = rpc_settings['rpc_password']
-rpc_port = rpc_settings['rpc_port']
+# RPC credentials for the selected node come from .env (RPC_<NAME>_USER/HOST/PASSWORD/PORT),
+# never from config.json — config.json is committed to git, .env is gitignored.
+_env_prefix = f"RPC_{connect_to.upper()}"
+rpc_user = os.environ.get(f"{_env_prefix}_USER")
+rpc_host = os.environ.get(f"{_env_prefix}_HOST")
+rpc_password = os.environ.get(f"{_env_prefix}_PASSWORD")
+rpc_port = os.environ.get(f"{_env_prefix}_PORT")
+if not all([rpc_user, rpc_host, rpc_password, rpc_port]):
+    if testing:
+        # Testing mode never actually calls rpc_connection (dummy data is used
+        # instead), so missing credentials shouldn't block --testing runs on a
+        # desktop with no .env configured.
+        rpc_user, rpc_host, rpc_password, rpc_port = "testing", "localhost", "testing", "8332"
+    else:
+        raise SystemExit(
+            f"Missing RPC credentials for '{connect_to}' in .env. Expected "
+            f"{_env_prefix}_USER, {_env_prefix}_HOST, {_env_prefix}_PASSWORD, and {_env_prefix}_PORT "
+            f"(see .env.example)."
+        )
+
+# Optional receive address for the QR panel on the Node screen. Lives in .env
+# rather than config.json for the same reason RPC creds do — config.json is
+# committed to git, .env is not. Absent means the QR panel is simply skipped.
+wallet_address = os.environ.get('WALLET_ADDRESS', '').strip() or None
+# .env.example ships this as the live default (the project author's own
+# address) rather than blank, so a "Buy me a coffee" note is shown under the
+# QR code specifically when that default hasn't been changed.
+DEFAULT_WALLET_ADDRESS = "1FpaYV2cTk1W7WtHhsRP2kuNtKynNbeGoH"
 # Relative cache/log paths are resolved against the repo directory (BASE_DIR),
 # not the process's working directory, so they land in the repo regardless of
 # where the launching script `cd`s to (e.g. install.sh's Desktop launcher).
@@ -177,6 +203,7 @@ PALETTE = {
     'good': '#0ca30c',
     'critical': '#d03b3b',
     'accent': '#005678',
+    'bitcoin_orange': '#f7931a',
 }
 
 # Colors the 1-week hashrate trend line relative to its own min/max, matching
@@ -668,7 +695,10 @@ def update_more_metrics():
         current_price = 50000
         high_24h = 51000
         low_24h = 49000
-        address_balance = 1.0
+        # Falls back to a well-known public example address so the QR panel
+        # has something to render in --testing even with no WALLET_ADDRESS set.
+        qr_address = wallet_address or "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
+        address_balance = 1.0 if wallet_address else None
         last_update = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     else:
         try:
@@ -679,14 +709,17 @@ def update_more_metrics():
                 low_24h = min(p[1] for p in prices)
             else:
                 high_24h = low_24h = current_price
-            address_balance = get_address_balance('1FpaYV2cTk1W7WtHhsRP2kuNtKynNbeGoH')
+            qr_address = wallet_address
+            address_balance = get_address_balance(wallet_address) if wallet_address else None
             last_update = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         except Exception as e:
             logging.error(f"Error fetching data for more metrics: {e}")
             blockchain_info = network_info = fees = None
-            current_price = high_24h = low_24h = address_balance = 0
+            current_price = high_24h = low_24h = 0
+            qr_address = None
+            address_balance = None
             last_update = "Error"
-    
+
     chain_name = blockchain_info.get('chain', 'unknown') if blockchain_info else 'unknown'
     difficulty = blockchain_info.get('difficulty', 0) if blockchain_info else 0
     difficulty_text = format_difficulty(difficulty)
@@ -695,7 +728,7 @@ def update_more_metrics():
     fee_rates_usd = [0, 0, 0]
     if fees:
         fee_rates_usd = [fee * 0.00000001 * current_price for fee in fees]
-    usd_value = address_balance * current_price
+    usd_value = address_balance * current_price if address_balance is not None else None
 
     def label(text):
         return TextArea(text, textprops=dict(color=PALETTE['secondary'], fontsize=13))
@@ -715,8 +748,11 @@ def update_more_metrics():
                            value(f"L:${fee_rates_usd[0]:,.2f} M:${fee_rates_usd[1]:,.2f} H:${fee_rates_usd[2]:,.2f}" if fees else "N/A")], align="left", pad=0, sep=6),
         HPacker(children=[label("24h High:"), value(f"${high_24h:,.0f}", PALETTE['good'])], align="left", pad=0, sep=6),
         HPacker(children=[label("24h Low:"), value(f"${low_24h:,.0f}", PALETTE['critical'])], align="left", pad=0, sep=6),
-        HPacker(children=[label("Address Balance:"), value(f"{address_balance:.3f} BTC (${usd_value:,.0f})", PALETTE['accent'])], align="left", pad=0, sep=6),
     ]
+    if address_balance is not None:
+        rows.append(HPacker(children=[label("Address Balance:"),
+                                       value(f"{address_balance:.3f} BTC (${usd_value:,.0f})", PALETTE['accent'])],
+                             align="left", pad=0, sep=6))
     box = VPacker(children=rows, align="left", pad=0, sep=8)
     heading = TextArea("NODE METRICS", textprops=dict(color=PALETTE['primary'], fontsize=18, fontweight='bold'))
 
@@ -735,6 +771,27 @@ def update_more_metrics():
 
     more_ax.add_artist(anchored_heading)
     more_ax.add_artist(anchored_box)
+
+    # Receive QR, next to the metrics box — skipped entirely when no
+    # WALLET_ADDRESS is configured (or, outside --testing, when fetching it failed).
+    if qr_address:
+        qr_label = TextArea("Receive", textprops=dict(color=PALETTE['secondary'], fontsize=12, fontweight='bold'))
+        qr_array = get_wallet_qr_array(qr_address)
+        # Target a fixed on-screen width regardless of the QR's native pixel
+        # size, which varies with address length / matplotlib's chosen version.
+        qr_zoom = 150 / qr_array.shape[1]
+        qr_image = OffsetImage(qr_array, zoom=qr_zoom)
+        qr_children = [qr_label, qr_image]
+        if qr_address == DEFAULT_WALLET_ADDRESS:
+            qr_children.append(TextArea("Buy me a coffee ☕", textprops=dict(color=PALETTE['bitcoin_orange'], fontsize=11, fontweight='bold')))
+        qr_content = VPacker(children=qr_children, align="center", pad=0, sep=4)
+        anchored_qr = AnchoredOffsetbox(loc='upper right', child=qr_content, pad=0.8, frameon=True,
+                                         bbox_to_anchor=(0.98, 0.98), bbox_transform=more_ax.transAxes, borderpad=0)
+        anchored_qr.patch.set_boxstyle("round,pad=0.6")
+        anchored_qr.patch.set_facecolor(PALETTE['page'])
+        anchored_qr.patch.set_edgecolor(PALETTE['baseline'])
+        anchored_qr.patch.set_alpha(0.9)
+        more_ax.add_artist(anchored_qr)
 
     more_fig.tight_layout()
     more_canvas.draw()
@@ -876,6 +933,19 @@ def get_address_balance(address):
     except Exception as e:
         logging.error(f"Error getting address balance: {e}")
         return 0
+
+_wallet_qr_cache = {}  # address -> numpy array, since the QR never changes for a static address
+def get_wallet_qr_array(address):
+    """Render a bitcoin: URI QR code for address as an RGB array matplotlib can
+    imshow, caching it since a static address's QR never changes between the
+    Node screen's redraws."""
+    if address not in _wallet_qr_cache:
+        qr = qrcode.QRCode(border=2, box_size=6)
+        qr.add_data(f"bitcoin:{address}")
+        qr.make(fit=True)
+        img = qr.make_image(fill_color=PALETTE['page'], back_color=PALETTE['primary']).convert('RGB')
+        _wallet_qr_cache[address] = np.array(img)
+    return _wallet_qr_cache[address]
 
 def load_price_from_cache():
     """Load price data from cache without fetching new data"""
