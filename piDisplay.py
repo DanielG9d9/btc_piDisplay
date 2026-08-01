@@ -1238,7 +1238,20 @@ def render_price_chart(current_price, daily_change, prices):
     fig.tight_layout(pad=0.5, h_pad=0.8, w_pad=0.5)
     canvas.draw()
 
-def _draw_stat_tile(fig, grid_cell, label, big_text, unit_text, sub_text, value_color=None):
+def _dashboard_scale(fig):
+    """Font-scale factor for the mining dashboard, relative to this app's
+    desktop baseline figure size (10x4 in). The figure is resized by Tk to
+    match whatever window/screen it's actually drawn in, but matplotlib
+    fontsizes are absolute points — without this, text sized for the
+    desktop crowds or overflows the much smaller canvas a constrained Pi
+    display renders into. Clamped so a tiny screen doesn't shrink text to
+    unreadable, and a larger-than-baseline window doesn't balloon it."""
+    base_w, base_h = 10.0, 4.0
+    fig_w, fig_h = fig.get_size_inches()
+    scale = min(fig_w / base_w, fig_h / base_h)
+    return max(0.55, min(scale, 1.15))
+
+def _draw_stat_tile(fig, grid_cell, label, big_text, unit_text, sub_text, value_color=None, scale=1.0):
     """Draw one stat card (label / big value [+ small unit] / subtext)
     into a gridspec cell. The unit is placed flush after the big value by
     measuring its actual rendered width — mixed font sizes on one baseline
@@ -1246,18 +1259,20 @@ def _draw_stat_tile(fig, grid_cell, label, big_text, unit_text, sub_text, value_
     guess drifts across the different figure sizes this app runs at (Pi vs.
     desktop). sub_text may be a plain string (rendered in the muted color) or
     a list of (text, color) segments for mixed-color subtext, e.g. a colored
-    +/-% figure inline with muted surrounding words."""
+    +/-% figure inline with muted surrounding words. scale comes from
+    _dashboard_scale() and keeps these fixed-point fontsizes proportionate
+    to the actual rendered figure size."""
     tile_ax = fig.add_subplot(grid_cell)
     tile_ax.axis('off')
     tile_ax.set_xlim(0, 1)
     tile_ax.set_ylim(0, 1)
 
     tile_ax.text(0.5, 0.88, label, transform=tile_ax.transAxes,
-                 ha='center', va='top', fontsize=13, fontweight='bold', color=PALETTE['accent'])
+                 ha='center', va='top', fontsize=13 * scale, fontweight='bold', color=PALETTE['accent'])
 
     big_color = value_color or PALETTE['primary']
     big = tile_ax.text(0.0, 0.48, big_text, transform=tile_ax.transAxes,
-                        ha='left', va='center', fontsize=24, fontweight='bold', color=big_color)
+                        ha='left', va='center', fontsize=24 * scale, fontweight='bold', color=big_color)
 
     unit = None
     if unit_text:
@@ -1265,7 +1280,7 @@ def _draw_stat_tile(fig, grid_cell, label, big_text, unit_text, sub_text, value_
         bbox = big.get_window_extent(renderer=fig.canvas.get_renderer())
         x_end = tile_ax.transAxes.inverted().transform((bbox.x1, 0))[0]
         unit = tile_ax.text(x_end + 0.03, 0.44, unit_text, transform=tile_ax.transAxes,
-                     ha='left', va='center', fontsize=12, color=PALETTE['secondary'])
+                     ha='left', va='center', fontsize=12 * scale, color=PALETTE['secondary'])
 
     # Re-center the value (+ unit, if present) as one group now that its
     # actual rendered width is known - the pair was built left-aligned at 0
@@ -1284,7 +1299,7 @@ def _draw_stat_tile(fig, grid_cell, label, big_text, unit_text, sub_text, value_
         x = 0.0
         for part_text, part_color in parts:
             t = tile_ax.text(x, 0.06, part_text, transform=tile_ax.transAxes,
-                              ha='left', va='bottom', fontsize=10, color=part_color)
+                              ha='left', va='bottom', fontsize=10 * scale, color=part_color)
             fig.canvas.draw()
             bbox = t.get_window_extent(renderer=fig.canvas.get_renderer())
             x = tile_ax.transAxes.inverted().transform((bbox.x1, 0))[0]
@@ -1301,6 +1316,7 @@ def render_mining_dashboard(blockchain_data, difficulty_adj, hashrate_data):
     global fig, canvas, ax
     fig.clear()
     fig.patch.set_facecolor(PALETTE['page'])
+    scale = _dashboard_scale(fig)
 
     gs = fig.add_gridspec(2, 3, height_ratios=[1, 3.2], hspace=0.7, wspace=0.3,
                            top=0.93, bottom=0.13, left=0.11, right=0.92)
@@ -1331,7 +1347,8 @@ def render_mining_dashboard(blockchain_data, difficulty_adj, hashrate_data):
 
     _draw_stat_tile(
         fig, gs[0, 0], "Remaining", f"{remaining_blocks:,}", "blocks",
-        f"In ~{remaining_days:.0f} days" if remaining_days >= 1 else "In <1 day"
+        f"In ~{remaining_days:.0f} days" if remaining_days >= 1 else "In <1 day",
+        scale=scale
     )
 
     change_color = PALETTE['good'] if difficulty_change >= 0 else PALETTE['critical']
@@ -1347,7 +1364,7 @@ def render_mining_dashboard(blockchain_data, difficulty_adj, hashrate_data):
         ]
     _draw_stat_tile(
         fig, gs[0, 1], "Estimate", f"{arrow} {abs(difficulty_change):.2f}%", None,
-        prev_text, value_color=change_color
+        prev_text, value_color=change_color, scale=scale
     )
 
     if halving_date is not None:
@@ -1359,7 +1376,7 @@ def render_mining_dashboard(blockchain_data, difficulty_adj, hashrate_data):
             halving_sub = f"In ~{halving_days} days"
     else:
         halving_big, halving_sub = "N/A", ""
-    _draw_stat_tile(fig, gs[0, 2], "Next Halving", halving_big, None, halving_sub)
+    _draw_stat_tile(fig, gs[0, 2], "Next Halving", halving_big, None, halving_sub, scale=scale)
 
     ax = fig.add_subplot(gs[1, :])
     ax.set_facecolor(PALETTE['surface'])
@@ -1408,8 +1425,8 @@ def render_mining_dashboard(blockchain_data, difficulty_adj, hashrate_data):
         ax.set_ylim(min(hr_values) * 0.97, max(hr_values) * 1.03)
 
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: format_hashrate(v)))
-    ax.tick_params(axis='y', colors=PALETTE['muted'], labelsize=9)
-    ax.tick_params(axis='x', colors=PALETTE['muted'])
+    ax.tick_params(axis='y', colors=PALETTE['muted'], labelsize=9 * scale)
+    ax.tick_params(axis='x', colors=PALETTE['muted'], labelsize=9 * scale)
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
     ax.set_axisbelow(True)
     ax.grid(axis='y', color=PALETTE['grid'], linewidth=0.6, alpha=0.5, zorder=0)
@@ -1428,7 +1445,7 @@ def render_mining_dashboard(blockchain_data, difficulty_adj, hashrate_data):
         ax2.step(diff_dates, diff_values, where='post', color='#d6336c', linewidth=2, zorder=3)
 
     ax2.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v / 1e12:,.0f}T"))
-    ax2.tick_params(axis='y', colors=PALETTE['muted'], labelsize=9)
+    ax2.tick_params(axis='y', colors=PALETTE['muted'], labelsize=9 * scale)
     ax2.grid(False)
 
     ax.spines['top'].set_visible(False)
@@ -1439,9 +1456,9 @@ def render_mining_dashboard(blockchain_data, difficulty_adj, hashrate_data):
     ax2.spines['right'].set_color(PALETTE['baseline'])
 
     hashrate_val = ax.text(0.0, 1.02, format_hashrate(current_hashrate), transform=ax.transAxes, ha='left', va='bottom',
-            fontsize=16, fontweight='bold', color=PALETTE['primary'])
+            fontsize=16 * scale, fontweight='bold', color=PALETTE['primary'])
     difficulty_val = ax.text(1.0, 1.02, format_difficulty(current_difficulty), transform=ax.transAxes, ha='right', va='bottom',
-            fontsize=16, fontweight='bold', color=PALETTE['primary'])
+            fontsize=16 * scale, fontweight='bold', color=PALETTE['primary'])
 
     # Center each header over its value's actual rendered width rather than
     # over the axes edge, since the values aren't fixed-width.
@@ -1453,9 +1470,9 @@ def render_mining_dashboard(blockchain_data, difficulty_adj, hashrate_data):
     diff_center = disp_to_axes.transform(((diff_bbox.x0 + diff_bbox.x1) / 2, 0))[0]
 
     ax.text(hr_center, 1.13, "Hashrate (1w)", transform=ax.transAxes, ha='center', va='bottom',
-            fontsize=12, fontweight='bold', color=PALETTE['accent'])
+            fontsize=12 * scale, fontweight='bold', color=PALETTE['accent'])
     ax.text(diff_center, 1.13, "Difficulty", transform=ax.transAxes, ha='center', va='bottom',
-            fontsize=12, fontweight='bold', color=PALETTE['accent'])
+            fontsize=12 * scale, fontweight='bold', color=PALETTE['accent'])
 
     canvas.draw()
 
