@@ -30,7 +30,7 @@
         "price_seconds_for_hourly": 3600,
         "blockchain_seconds": 600
     },
-    "testing": true,
+    "testing": false,
     "cache_file": "bitcoin_price_cache.json",
     "mining_cache_file": "bitcoin_mining_cache.json",
     "mining_chart_period": "1y",
