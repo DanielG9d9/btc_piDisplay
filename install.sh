@@ -56,8 +56,7 @@ if [ "${user_input^^}" = "Y" ]; then
     echo "You may delete any extra examples if you wish! There are two in rpc_settings."
     echo "Next, update the 'connect_to' variable to the name you used in rpc_settings."
     echo "'update_intervals' should be updated with SECONDS between refreshes. Example: 60 = refresh every 60 seconds."
-    printf "Update log_file path with your name ($USER) if not satoshi."
-    echo " Use CTRL+x to save your updates."
+    echo "Use CTRL+x to save your updates."
     echo "Opening in 10 seconds..."
     sleep 10
     cd $project_file_path/ # Navigate to the project root folder
@@ -76,6 +75,6 @@ for i in {1..3}; do # Sleep for 3 seconds.
     echo "."
     sleep 1 # echo three . to create space
 done
-nohup "./Run Display.sh" > /home/$USER/Desktop/bitcoin_display.log 2>&1 & # Launch app with nohop so you can close the terminal.# Update to Run Display.sh
+nohup "./Run Display.sh" > "$project_file_path/nohup.log" 2>&1 & # Launch app with nohup so you can close the terminal. The app's own log (bitcoin_display.log) is written by piDisplay.py into the repo directory.
 
 echo "########################################################################"

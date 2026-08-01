@@ -30,9 +30,9 @@ parser.add_argument('--config', type=str, help='Path to config file')
 args = parser.parse_args()
 
 # Use CLI --config first, then find config.json, then set defaults
+BASE_DIR = pathlib.Path(__file__).resolve().parent
 config_path = args.config or os.environ.get('PIDISPLAY_CONFIG')
 if not config_path:
-    BASE_DIR = pathlib.Path(__file__).resolve().parent
     config_path = str(BASE_DIR / "config.json")
 
 with open(config_path, 'r') as config_file:
@@ -66,10 +66,15 @@ rpc_user = rpc_settings['rpc_user']
 rpc_host = rpc_settings['rpc_host']
 rpc_password = rpc_settings['rpc_password']
 rpc_port = rpc_settings['rpc_port']
-CACHE_FILE = config['cache_file']
+# Relative cache/log paths are resolved against the repo directory (BASE_DIR),
+# not the process's working directory, so they land in the repo regardless of
+# where the launching script `cd`s to (e.g. install.sh's Desktop launcher).
+CACHE_FILE = str(BASE_DIR / config['cache_file'])
 
 # Set up logging
 log_file = config['testing_log_file'] if testing else config['log_file']
+if not os.path.isabs(log_file):
+    log_file = str(BASE_DIR / log_file)
 log_kwargs = dict(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -79,7 +84,7 @@ try:
     logging.basicConfig(filename=log_file, **log_kwargs)
 except OSError:
     # Configured log path (e.g. the Pi's log_file) doesn't exist on this machine.
-    fallback_log = str(pathlib.Path(__file__).resolve().parent / "bitcoin_display.log")
+    fallback_log = str(BASE_DIR / "bitcoin_display.log")
     logging.basicConfig(filename=fallback_log, **log_kwargs)
     logging.warning(f"Could not open configured log file '{log_file}'; falling back to '{fallback_log}'.")
 
