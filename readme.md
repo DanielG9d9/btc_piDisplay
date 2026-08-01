@@ -21,6 +21,7 @@ My build consists of a raspberry pi 4 (8gb), 1 TB HHD, and a 5" display from [Am
 
 - Graphical display of bitcoin price movement (24 hour).
 - Displays 24 hour percentage change with color coordinated title.
+- Mining dashboard (toggle with the "Mining" button): blocks remaining to the next difficulty adjustment, the estimated difficulty change, a next-halving countdown, and a 1-week hashrate / difficulty history chart (via mempool.space).
 - Displays node information such as
     - Name of node
     - Connected chain
@@ -82,6 +83,8 @@ Follow these steps to install and set up the project:
 | `price` | Seconds to update -> Hourly = '3600' |
 | `blockchain` | Seconds to update -> 10-minutes = '600' |
 | `viewing_mode` | 'Rolling' or 'Static' - Rolling will always show full 24 hours of price data. Static will start at midnight and update with new price data until it resets the following day at midnight. |
+| `chart_alternating` | 'off' or 'on' - When on, the main screen automatically alternates between the price chart and the mining dashboard. Also toggleable from Display Settings. |
+| `chart_alternating_interval` | '30s', '1m', or '5m' - How often the main screen switches when `chart_alternating` is on. |
 | `testing` | Specify if testing so the program will use fake data and work on a desktop display. Can also pass --testing in start command: ```python piDisplay.py --testing``` |
     
 ## Manually Starting The Program

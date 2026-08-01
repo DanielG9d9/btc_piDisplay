@@ -3,13 +3,18 @@
     "time_series": "military",
     "update_intervals": {
         "__comment": "These are in seconds. price is derived from color_scheme_interval, not set here.",
-        "blockchain": 600
+        "blockchain": 600,
+        "mining": 900
     },
     "viewing_mode": "rolling",
     "__viewing_mode": "static, rolling",
     "color_scheme": "dynamic",
     "chart_type": "candlestick",
     "__chart_type_options": "line, candlestick, baseline",
+    "chart_alternating": "off",
+    "__chart_alternating_options": "off, on. When on, the main screen alternates between the price chart and the mining dashboard.",
+    "chart_alternating_interval": "30s",
+    "__chart_alternating_interval_options": "30s, 1m, 5m",
     "color_scheme_interval": "hourly",
     "__color_scheme_interval_options": "daily, hourly, 30min, 15min, 5min (also sets candlestick width). 5min is the finest resolution CoinGecko's free tier provides.",
     "__color_scheme_interval_mapping": {
@@ -25,8 +30,11 @@
         "price_seconds_for_hourly": 3600,
         "blockchain_seconds": 600
     },
-    "testing": false,
+    "testing": true,
     "cache_file": "bitcoin_price_cache.json",
+    "mining_cache_file": "bitcoin_mining_cache.json",
+    "mining_chart_period": "1y",
+    "__mining_chart_period_options": "3d, 1w, 1m, 3m, 6m, 1y, 2y, 3y, all (mempool.space hashrate/difficulty history window)",
     "log_file": "bitcoin_display.log",
     "testing_log_file": "bitcoin_display.log",
     "rpc_settings": {

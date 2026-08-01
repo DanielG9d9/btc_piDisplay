@@ -1,6 +1,9 @@
 bitcoin_env/
 bitcoin_price_cache.json
+bitcoin_mining_cache.json
 bitcoin_display.log
 nohup.log
+__pycache__/
+*.pyc
 # Local environment variables (keep secrets out of git)
 .env
