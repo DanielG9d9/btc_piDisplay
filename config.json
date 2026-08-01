@@ -1,5 +1,6 @@
 {
     "connect_to": "NUC1",
+    "__connect_to": "Name of the RPC node profile to use. Credentials for it are read from .env as RPC_<NAME>_USER/HOST/PASSWORD/PORT (see .env.example) \u00e2\u20ac\u201d not stored here.",
     "time_series": "military",
     "update_intervals": {
         "__comment": "These are in seconds. price is derived from color_scheme_interval, not set here.",
@@ -8,8 +9,8 @@
     },
     "viewing_mode": "rolling",
     "__viewing_mode": "static, rolling",
-    "color_scheme": "dynamic",
-    "chart_type": "candlestick",
+    "color_scheme": "static",
+    "chart_type": "line",
     "__chart_type_options": "line, candlestick, baseline",
     "chart_alternating": "off",
     "__chart_alternating_options": "off, on. When on, the main screen alternates between the price chart and the mining dashboard.",
@@ -36,19 +37,5 @@
     "mining_chart_period": "1y",
     "__mining_chart_period_options": "3d, 1w, 1m, 3m, 6m, 1y, 2y, 3y, all (mempool.space hashrate/difficulty history window)",
     "log_file": "bitcoin_display.log",
-    "testing_log_file": "bitcoin_display.log",
-    "rpc_settings": {
-        "NUC1": {
-            "rpc_user": "satoshi",
-            "rpc_host": "192.168.86.53",
-            "rpc_password": "Waffle9d9RPC123PaSSw0rd",
-            "rpc_port": "8332"
-        },
-        "raspiblitz": {
-            "rpc_user": "raspibolt",
-            "rpc_host": "192.168.86.68",
-            "rpc_password": "Waffle9d9RPC123PaSSw0rd",
-            "rpc_port": "8332"
-        }
-    }
+    "testing_log_file": "bitcoin_display.log"
 }

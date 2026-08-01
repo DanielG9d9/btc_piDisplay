@@ -4,9 +4,24 @@ This project is intended to easily give Bitcoin node runners a display for their
 
 My build consists of a raspberry pi 4 (8gb), 1 TB HHD, and a 5" display from [Amazon](https://www.amazon.com/dp/B0CXTFN8K9).
 
+## Screenshots
+
+| Candlestick Price Chart | Baseline Price Chart | Line Price Chart |
+|---|---|---|
+| ![Candlestick price chart](screenshots/candle_price_chart.png) | ![Baseline price chart](screenshots/baseline_price_chart.png) | ![Line price chart](screenshots/line_price_chart.png) |
+
+| Mining Dashboard |
+|---|
+| ![Mining dashboard](screenshots/mining_dashboard.png) |
+
+| Settings | Node Metrics |
+|---|---|
+| ![Display Settings](screenshots/display_settings.png) | ![Node Metrics](screenshots/nodemetrics_dummy.png) |
+
 ## Table of Contents
 
 
+- [Screenshots](#screenshots)
 - [Features](#features)
 - [Pre-requisites](#pre-requisites)
 - [Installing piDisplay](#Installing-piDisplay)
@@ -30,6 +45,7 @@ My build consists of a raspberry pi 4 (8gb), 1 TB HHD, and a 5" display from [Am
     - Low, medium, and high fee status.
     - Current difficulty.
     - CPU Temperature (pi)
+- Optional receive QR code next to Node metrics, when a `WALLET_ADDRESS` is configured (see below).
 - Testing capabilities included to run mock price data
 
 ## Pre-requisites
@@ -48,8 +64,7 @@ Follow these steps if you're trying to run a new Pi Display. You can copy / past
 3. Insert your Pi SD card into your computer.
 4. Select your Pi device, OS, and storage option from the menu.
     - Raspberry Pi OS (64-bit) is what I used.
-5. Click Next. You can opt to customize your settings so the Pi can connect to WiFi as soon as it boots. Make sure you click 'YES' after changing the settings.
-    - If you set your hostname to satoshi then you won't need to update a filepath later on if that's worth anything.
+5. Click Next. You can opt to customize your settings so the Pi can connect to WiFi as soon as it boots.
     - Some beneficial settings include enabling SSH and setting country WLAN and timezone. Those can be changed from desktop preferences on the Pi though too.
     - ENABLE SSH AND USE PASSWORD AUTHENTICATION!
 6. Confirm settings and write to the SD card.
@@ -58,11 +73,12 @@ Follow these steps if you're trying to run a new Pi Display. You can copy / past
 ### Optional: Auto-Clone & Install On First Boot
 If you'd rather not type the `git clone`/`install.sh` commands over SSH at all, you can have the Pi do it itself the very first time it boots — no custom OS image required.
 
-Raspberry Pi Imager's "OS customization" screen (step 5 above) works by writing a script called `firstrun.sh` onto the SD card's boot partition, which runs once as root on first boot to apply your hostname/SSH/WiFi settings and then deletes itself. You can append your own commands to the end of that same script (before the self-delete/reboot lines) to have it clone this repo and kick off `install.sh` automatically:
+Imager applies the "Customisation" settings from step 5 (hostname, user account, WiFi, SSH) via a declarative file called `custom.toml`, written to the boot partition. `custom.toml` only knows how to apply those specific settings — it has no hook for running arbitrary shell commands, and there is no `firstrun.sh` on the card by default. To get the auto-clone-on-first-boot behavior, you need to create your own `firstrun.sh` and wire it up via `cmdline.txt`, using the kernel's generic `systemd.run=` first-boot mechanism:
 
 1. After Imager finishes writing the card, re-insert it into your computer (or leave it mounted) and open the boot partition — it'll be named `bootfs` or `boot`.
-2. Open `firstrun.sh` in a text editor. Scroll to the bottom, and just above the final `rm -f /boot/firstrun.sh`/reboot lines, insert (replacing `pi` with whichever username you set in step 5):
+2. Create a new file at the root of that partition named `firstrun.sh` containing (replacing `pi` with whichever username you set in step 5 (You need to do this on line 4 & 7)):
     ```bash
+    #!/bin/bash
     su - pi -c '
         DEBIAN_FRONTEND=noninteractive sudo apt-get update
         DEBIAN_FRONTEND=noninteractive sudo apt-get install -y git
@@ -71,11 +87,21 @@ Raspberry Pi Imager's "OS customization" screen (step 5 above) works by writing 
         cd btc_piDisplay
         printf "Y\nN\n" | ./install.sh > /home/pi/btc_piDisplay/first_boot_install.log 2>&1
     '
+    rm -f /boot/firmware/firstrun.sh
+    sed -i 's| systemd.run.*||' /boot/firmware/cmdline.txt
+    exit 0
     ```
-    The piped `Y` answers "yes" to enabling auto-start on boot; the `N` skips the interactive `nano config.json` prompt, since there's no terminal attached during first boot.
-3. Save the file, eject the card, and boot the Pi as normal.
+    The piped `Y` answers "yes" to enabling auto-start on boot; the `N` skips the interactive `nano config.json` prompt, since there's no terminal attached during first boot. The last two lines clean up after themselves so the script doesn't try to re-run on every subsequent boot.
+3. Open `cmdline.txt`, which already exists at the root of the boot partition (Imager writes it for every card). It's a single line with no trailing newline — carefully append the following to the *end* of that existing line, separated by a space, without adding a line break:
+    ```
+    systemd.run=/boot/firmware/firstrun.sh systemd.run_success_action=reboot systemd.unit=kernel-command-line.target
+    ```
+    The paths above use `/boot/firmware` (not `/boot`) because that's where the OS mounts this partition once it's running, even though it shows up as `bootfs`/`boot` when you view the card from your computer.
+4. Save both files, eject the card, and boot the Pi as normal.
 
-First boot will take a few minutes longer than usual while it installs packages. Once it's up, SSH in and check `~/btc_piDisplay/first_boot_install.log` if the display doesn't appear — and don't forget you still need to edit `config.json` with your node's RPC details (see below), since that step was skipped automatically.
+This is more fragile than it used to be since Imager no longer scaffolds it for you — a mistake editing `cmdline.txt` (e.g. an extra line break) can prevent the Pi from booting correctly, so double check it's still a single line before ejecting. If you'd rather not risk it, skip this section entirely: your SSH/user/WiFi settings already come from `custom.toml` via the Imager wizard, so you can just SSH in after first boot and run the `git clone`/`install.sh` steps manually (see [Install piDisplay](#Installing-piDisplay) below).
+
+First boot will take a few minutes longer than usual while it installs packages. Once it's up, SSH in and check `~/btc_piDisplay/first_boot_install.log` if the display doesn't appear — and don't forget you still need to create `.env` with your node's RPC details (see below), since that step was skipped automatically and there's no `.env` yet, only the committed `.env.example`.
 
 ## Install piDisplay
 
@@ -96,11 +122,25 @@ Follow these steps to install and set up the project:
 4. Run the install.sh file.
     ```bash
     ./install.sh # Run the script file to install dependencies.  
+### Setting up your RPC connection
+
+RPC credentials live in `.env`, not `config.json` — `config.json` is committed to git, `.env` is gitignored, so this keeps your node's username/password out of version control.
+
+1. Copy the example file: `cp .env.example .env`
+2. Edit `.env` and add one block per node you want to be able to connect to, named `RPC_<NAME>_USER`, `RPC_<NAME>_HOST`, `RPC_<NAME>_PASSWORD`, and `RPC_<NAME>_PORT` (see the comments in `.env.example` for the format).
+3. In `config.json`, set `connect_to` to whichever `<NAME>` you used — that picks which block in `.env` the app reads on startup.
+
+`install.sh` walks you through both files interactively if you let it.
+
+### Receive QR code (optional)
+
+To show a receive QR code next to Node metrics, set `WALLET_ADDRESS` in `.env` to a Bitcoin receive address (not an xpub). Leave it unset to skip the QR panel entirely. Like the RPC credentials, it lives in `.env` rather than `config.json` since `config.json` is committed to git.
+
 ### Customizing the config file!  
 
 | Variable | Option |
 |---|---|
-| `connect_to` | Name of the device you want to connect to - configured at the bottom of the config.json.|
+| `connect_to` | Name of the RPC node profile to use — must match a `RPC_<NAME>_*` block in `.env`. |
 | `time_series` | Accepts 'standard' time or will default to 24-hour format |
 | `update_intervals` | Specify how often the data should update.Integers are in seconds. |
 | `price` | Seconds to update -> Hourly = '3600' |
