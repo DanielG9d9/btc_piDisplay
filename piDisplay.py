@@ -894,8 +894,27 @@ def load_price_from_cache():
     except Exception as e:
         logging.error(f"Error loading price from cache: {e}")
         return None, None, None
+def _kraken_ohlc(interval_minutes):
+    """Fetch Kraken OHLC candles for XBT/USD at the given interval (in
+    minutes; Kraken accepts 1, 5, 15, 30, 60, 240, 1440, 10080, 21600).
+    Returns a list of [timestamp_ms, open, high, low, close] sorted oldest
+    first, or None on failure. Kraken returns HTTP 200 even on API errors
+    (e.g. bad params), so the "error" field has to be checked explicitly."""
+    url = "https://api.kraken.com/0/public/OHLC"
+    response = requests.get(url, params={"pair": "XBTUSD", "interval": interval_minutes}, timeout=10)
+    response.raise_for_status()
+    data = response.json()
+    if data.get("error"):
+        raise ValueError(f"Kraken API error: {data['error']}")
+    # result has one pair-name key (e.g. "XXBTZUSD") plus "last"; the pair
+    # name isn't guaranteed stable, so pick it out by exclusion instead of
+    # hardcoding it.
+    candles = next(v for k, v in data["result"].items() if k != "last")
+    return [[int(c[0]) * 1000, float(c[1]), float(c[2]), float(c[3]), float(c[4])] for c in candles]
+
 def get_bitcoin_price():
-    """Fetch current Bitcoin price and historical data"""
+    """Fetch current Bitcoin price and historical data from Kraken (no API
+    key required, generous rate limits, US-accessible)."""
     try:
         if testing:
             if os.path.exists(CACHE_FILE): # Check if cache file exists
@@ -906,22 +925,27 @@ def get_bitcoin_price():
                     prices = cached_data["prices"]
                     print("Loaded price data from cache.")
                     return current_price, daily_change, prices
-        # Current price
-        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
-        response = requests.get(url)
-        response.raise_for_status()
-        current_data = response.json()
-        current_price = current_data["bitcoin"]["usd"]
 
-        # Previous 24h of price history. Using days=1 on the plain market_chart
-        # endpoint (rather than market_chart/range) gets 5-minute granularity
-        # for free — /range is capped at hourly on CoinGecko's free tier.
-        historical_url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1"
-        historical_response = requests.get(historical_url)
-        historical_response.raise_for_status()
-        historical_data = historical_response.json()
-        prices = historical_data['prices']
-        
+        # Current price
+        ticker_url = "https://api.kraken.com/0/public/Ticker"
+        response = requests.get(ticker_url, params={"pair": "XBTUSD"}, timeout=10)
+        response.raise_for_status()
+        ticker_data = response.json()
+        if ticker_data.get("error"):
+            raise ValueError(f"Kraken API error: {ticker_data['error']}")
+        ticker = next(iter(ticker_data["result"].values()))
+        current_price = float(ticker["c"][0])
+
+        # Previous 24h of price history, from 5-minute candles (Kraken's
+        # OHLC endpoint returns up to 720 candles regardless of interval, so
+        # this covers well over 24h and gets filtered below).
+        candles = _kraken_ohlc(5)
+        if candles is None:
+            return current_price, None, None
+
+        cutoff_ms = (datetime.now().timestamp() - 24 * 3600) * 1000
+        prices = [[c[0], c[4]] for c in candles if c[0] >= cutoff_ms]  # [timestamp_ms, close]
+
         if prices:
             previous_close_price = prices[0][1]
             daily_change = (current_price - previous_close_price) / previous_close_price * 100
@@ -929,19 +953,20 @@ def get_bitcoin_price():
             return current_price, daily_change, prices
         else:
             return current_price, None, None
-    except requests.RequestException as e:
+    except (requests.RequestException, ValueError, KeyError) as e:
         logging.error(f"Error fetching price data: {e}")
         return None, None, None
 
 def get_bitcoin_ohlc():
-    """Fetch real 30-minute OHLC candles from CoinGecko (actual exchange-derived
+    """Fetch real 30-minute OHLC candles from Kraken (actual exchange-derived
     open/high/low/close, not approximated from the plain price series)."""
     try:
-        url = "https://api.coingecko.com/api/v3/coins/bitcoin/ohlc?vs_currency=usd&days=1"
-        response = requests.get(url)
-        response.raise_for_status()
-        return response.json()  # [[timestamp_ms, open, high, low, close], ...]
-    except requests.RequestException as e:
+        candles = _kraken_ohlc(30)
+        if candles is None:
+            return None
+        cutoff_ms = (datetime.now().timestamp() - 24 * 3600) * 1000
+        return [c for c in candles if c[0] >= cutoff_ms]  # [[timestamp_ms, open, high, low, close], ...]
+    except (requests.RequestException, ValueError, KeyError) as e:
         logging.error(f"Error fetching OHLC data: {e}")
         return None
 
@@ -1060,7 +1085,7 @@ def _plot_dynamic_price_line(ax, plot_dates, plot_values):
         prev_point = points[-1]
 
 def _real_ohlc_candles():
-    """Fetch CoinGecko's real 30-min candles and aggregate them up to
+    """Fetch Kraken's real 30-min candles and aggregate them up to
     color_scheme_interval. Returns a list of (bucket_key, open, high, low, close)
     or None if unavailable (network error, or interval too fine to benefit)."""
     if testing or color_scheme_interval_minutes <= 30:
@@ -1093,7 +1118,7 @@ def _real_ohlc_candles():
 def _approximate_candles_from_prices(plot_dates, plot_values):
     """Approximate candles by bucketing the plain price series (open/close =
     first/last price in the bucket, high/low = its min/max). Used when the
-    interval is too fine for CoinGecko's real 30-min OHLC to help (15min, 5min)."""
+    interval is too fine for Kraken's real 30-min OHLC to help (15min, 5min)."""
     if len(plot_values) < 2:
         return []
     buckets = []  # [(bucket_key, [value, ...]), ...]
@@ -1107,7 +1132,7 @@ def _approximate_candles_from_prices(plot_dates, plot_values):
 
 def _plot_candlestick_price(ax, plot_dates, plot_values):
     """Draw the price series as OHLC candlesticks. Intervals coarser than
-    CoinGecko's native 30-minute OHLC granularity (hourly, daily) use real
+    Kraken's native 30-minute OHLC granularity (hourly, daily) use real
     exchange-derived candles; finer intervals (15min, 5min) approximate
     candles from the plain price series, which is all that's available at
     that resolution."""

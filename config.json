@@ -16,7 +16,7 @@
     "chart_alternating_interval": "30s",
     "__chart_alternating_interval_options": "30s, 1m, 5m",
     "color_scheme_interval": "hourly",
-    "__color_scheme_interval_options": "daily, hourly, 30min, 15min, 5min (also sets candlestick width). 5min is the finest resolution CoinGecko's free tier provides.",
+    "__color_scheme_interval_options": "daily, hourly, 30min, 15min, 5min (also sets candlestick width). 5min is the finest resolution the app fetches from Kraken.",
     "__color_scheme_interval_mapping": {
         "daily": 1440,
         "hourly": 60,
