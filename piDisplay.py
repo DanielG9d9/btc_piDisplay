@@ -1,25 +1,64 @@
 # Built by Danny Blue-Eyes
-from matplotlib.offsetbox import AnchoredOffsetbox, TextArea, VPacker, HPacker
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from bitcoinrpc.authproxy import AuthServiceProxy
-from matplotlib.offsetbox import AnchoredText
 from datetime import datetime, timedelta
-import matplotlib.ticker as mticker
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
-from datetime import datetime
-from tkinter import ttk
-import tkinter as tk
 import subprocess
-import platform
-import requests
 import argparse
+import platform
 import logging
 import pathlib
 import json
 import time
-import pytz
+import sys
 import os
+
+BASE_DIR = pathlib.Path(__file__).resolve().parent
+
+def _fatal_startup_error(message):
+    """Log a startup error to bitcoin_display.log and exit. Used for failures
+    that happen before the real logging config exists (it depends on
+    config.json having loaded successfully), so it always writes to the
+    default path in the repo directory rather than losing the message."""
+    logging.basicConfig(
+        filename=str(BASE_DIR / "bitcoin_display.log"),
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    logging.error(message)
+    print(message, file=sys.stderr)
+    sys.exit(1)
+
+# Everything below is a third-party dependency from requirements.txt (plus
+# tkinter, which needs the OS-level python3-tk package on some distros and
+# isn't pip-installable). If the venv was never created, or was created but
+# requirements were never installed, fail with a clear pointer to install.sh
+# instead of a raw traceback — and get that pointer into bitcoin_display.log
+# too, since a headless/auto-started launch may have no visible console.
+try:
+    from matplotlib.offsetbox import AnchoredOffsetbox, TextArea, VPacker, HPacker, OffsetImage
+    from matplotlib.colors import LinearSegmentedColormap, Normalize
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    from bitcoinrpc.authproxy import AuthServiceProxy
+    from matplotlib.collections import LineCollection
+    import matplotlib.ticker as mticker
+    import matplotlib.dates as mdates
+    import matplotlib.pyplot as plt
+    from dotenv import load_dotenv
+    from tkinter import ttk
+    import tkinter as tk
+    import numpy as np
+    import requests
+    import qrcode
+    import pytz
+except ImportError as e:
+    missing = e.name or str(e)
+    _fatal_startup_error(
+        f"Missing dependency '{missing}'. The virtual environment is either not set up "
+        "or is missing packages.\n"
+        "Fix: re-run install.sh from the project root (bash install.sh) to (re)create "
+        "bitcoin_env and install requirements.txt.\n"
+        "If the missing package is 'tkinter', install it at the OS level instead: "
+        "sudo apt-get install python3-tk."
+    )
 
 IS_PI = platform.machine().startswith("arm") or platform.machine().startswith("aarch")
 # Parse command line args FIRST
@@ -30,46 +69,71 @@ parser.add_argument('--config', type=str, help='Path to config file')
 args = parser.parse_args()
 
 # Use CLI --config first, then find config.json, then set defaults
+load_dotenv(BASE_DIR / ".env")  # RPC credentials live here, not in config.json (which is committed to git)
 config_path = args.config or os.environ.get('PIDISPLAY_CONFIG')
 if not config_path:
-    BASE_DIR = pathlib.Path(__file__).resolve().parent
     config_path = str(BASE_DIR / "config.json")
 
-with open(config_path, 'r') as config_file:
-    config = json.load(config_file)
+try:
+    with open(config_path, 'r') as config_file:
+        config = json.load(config_file)
+except FileNotFoundError:
+    _fatal_startup_error(
+        f"Config file not found at '{config_path}'. Fix: re-run install.sh (it seeds "
+        "config.json from the repo default), or check the --config/PIDISPLAY_CONFIG path."
+    )
+except json.JSONDecodeError as e:
+    _fatal_startup_error(f"Config file '{config_path}' is not valid JSON: {e}")
 
-# CLI --testing OVERRIDES config.json
-# CLI args OVERRIDE config.json
-if args.testing:
-    config['testing'] = True
-if args.static:
-    viewing_mode = 'static'  # CLI flag overrides config
+try:
+    # CLI --testing OVERRIDES config.json
+    # CLI args OVERRIDE config.json
+    if args.testing:
+        config['testing'] = True
+    if args.static:
+        viewing_mode = 'static'  # CLI flag overrides config
 
-# Use configuration values
-time_series = config['time_series'].lower()
-viewing_mode = config.get('viewing_mode', 'rolling').lower()
-color_scheme = config.get('color_scheme', 'static').lower()  # 'static' = fixed accent, 'dynamic' = green/red by price direction
-COLOR_SCHEME_INTERVAL_MINUTES = {'daily': 1440, 'hourly': 60, '30min': 30, '15min': 15, '5min': 5}
-color_scheme_interval = config.get('color_scheme_interval', 'hourly').lower()
-color_scheme_interval_minutes = COLOR_SCHEME_INTERVAL_MINUTES.get(color_scheme_interval, 60)
-chart_type = config.get('chart_type', 'line').lower()  # 'line' or 'candlestick'
+    # Use configuration values
+    time_series = config['time_series'].lower()
+    viewing_mode = config.get('viewing_mode', 'rolling').lower()
+    color_scheme = config.get('color_scheme', 'static').lower()  # 'static' = fixed accent, 'dynamic' = green/red by price direction
+    COLOR_SCHEME_INTERVAL_MINUTES = {'daily': 1440, 'hourly': 60, '30min': 30, '15min': 15, '5min': 5}
+    color_scheme_interval = config.get('color_scheme_interval', 'hourly').lower()
+    color_scheme_interval_minutes = COLOR_SCHEME_INTERVAL_MINUTES.get(color_scheme_interval, 60)
+    chart_type = config.get('chart_type', 'line').lower()  # 'line' or 'candlestick'
+    ALTERNATING_INTERVAL_SECONDS = {'15s': 15, '30s': 30, '1m': 60}
+    chart_alternating = config.get('chart_alternating', 'off').lower()  # 'off' or 'on'
+    chart_alternating_interval = config.get('chart_alternating_interval', '30s').lower()
+    chart_alternating_interval_seconds = ALTERNATING_INTERVAL_SECONDS.get(chart_alternating_interval, 30)
 
-# Price refresh cadence always matches color_scheme_interval, so a 5-minute
-# interval both fetches and displays fresh data every 5 minutes — no separate
-# setting to keep in sync.
-config['update_intervals']['price'] = color_scheme_interval_minutes * 60
-testing = config['testing']
+    # Price refresh cadence always matches color_scheme_interval, so a 5-minute
+    # interval both fetches and displays fresh data every 5 minutes — no separate
+    # setting to keep in sync.
+    config['update_intervals']['price'] = color_scheme_interval_minutes * 60
+    testing = config['testing']
 
-connect_to = config['connect_to']
-rpc_settings = config['rpc_settings'][connect_to]
-rpc_user = rpc_settings['rpc_user']
-rpc_host = rpc_settings['rpc_host']
-rpc_password = rpc_settings['rpc_password']
-rpc_port = rpc_settings['rpc_port']
-CACHE_FILE = config['cache_file']
+    connect_to = config['connect_to']
+    # Relative cache/log paths are resolved against the repo directory (BASE_DIR),
+    # not the process's working directory, so they land in the repo regardless of
+    # where the launching script `cd`s to (e.g. install.sh's Desktop launcher).
+    CACHE_FILE = str(BASE_DIR / config['cache_file'])
+    MINING_CACHE_FILE = str(BASE_DIR / config.get('mining_cache_file', 'bitcoin_mining_cache.json'))
+    # How much hashrate/difficulty history to pull for the mining chart. One of
+    # mempool.space's fixed periods: 3d, 1w, 1m, 3m, 6m, 1y, 2y, 3y, all.
+    MINING_CHART_PERIOD = config.get('mining_chart_period', '1y')
+    log_file = config['testing_log_file'] if testing else config['log_file']
+except KeyError as e:
+    _fatal_startup_error(
+        f"Config file '{config_path}' is missing required key: {e}. "
+        "Compare it against the repo's config.json, or re-run install.sh."
+    )
 
-# Set up logging
-log_file = config['testing_log_file'] if testing else config['log_file']
+# Set up logging. This happens before the RPC credential check below so a
+# missing/incomplete .env is written to bitcoin_display.log too, not just
+# printed to a console that may not exist (e.g. launched via the systemd
+# service or install.sh's nohup launcher).
+if not os.path.isabs(log_file):
+    log_file = str(BASE_DIR / log_file)
 log_kwargs = dict(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -79,12 +143,51 @@ try:
     logging.basicConfig(filename=log_file, **log_kwargs)
 except OSError:
     # Configured log path (e.g. the Pi's log_file) doesn't exist on this machine.
-    fallback_log = str(pathlib.Path(__file__).resolve().parent / "bitcoin_display.log")
+    fallback_log = str(BASE_DIR / "bitcoin_display.log")
     logging.basicConfig(filename=fallback_log, **log_kwargs)
     logging.warning(f"Could not open configured log file '{log_file}'; falling back to '{fallback_log}'.")
 
+# RPC credentials for the selected node come from .env (RPC_<NAME>_USER/HOST/PASSWORD/PORT),
+# never from config.json — config.json is committed to git, .env is gitignored.
+_env_prefix = f"RPC_{connect_to.upper()}"
+rpc_user = os.environ.get(f"{_env_prefix}_USER")
+rpc_host = os.environ.get(f"{_env_prefix}_HOST")
+rpc_password = os.environ.get(f"{_env_prefix}_PASSWORD")
+rpc_port = os.environ.get(f"{_env_prefix}_PORT")
+if not all([rpc_user, rpc_host, rpc_password, rpc_port]):
+    if testing:
+        # Testing mode never actually calls rpc_connection (dummy data is used
+        # instead), so missing credentials shouldn't block --testing runs on a
+        # desktop with no .env configured.
+        rpc_user, rpc_host, rpc_password, rpc_port = "testing", "localhost", "testing", "8332"
+    else:
+        message = (
+            f"Missing RPC credentials for '{connect_to}' in .env. Expected "
+            f"{_env_prefix}_USER, {_env_prefix}_HOST, {_env_prefix}_PASSWORD, and {_env_prefix}_PORT "
+            "(see .env.example). Fix: re-run install.sh and fill in .env when prompted, "
+            "or add the values to .env yourself."
+        )
+        logging.error(message)
+        raise SystemExit(message)
+
+# Optional receive address for the QR panel on the Node screen. Lives in .env
+# rather than config.json for the same reason RPC creds do — config.json is
+# committed to git, .env is not. Absent means the QR panel is simply skipped.
+wallet_address = os.environ.get('WALLET_ADDRESS', '').strip() or None
+# .env.example ships this as the live default (the project author's own
+# address) rather than blank, so a "Buy me a coffee" note is shown under the
+# QR code specifically when that default hasn't been changed.
+DEFAULT_WALLET_ADDRESS = "1FpaYV2cTk1W7WtHhsRP2kuNtKynNbeGoH"
+
 # RPC connection
-rpc_connection = AuthServiceProxy(f"http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}", timeout=30)
+try:
+    rpc_connection = AuthServiceProxy(f"http://{rpc_user}:{rpc_password}@{rpc_host}:{rpc_port}", timeout=30)
+except Exception as e:
+    logging.error(
+        f"Could not create RPC connection for '{connect_to}' ({rpc_host}:{rpc_port}): {e}. "
+        "Check the RPC_* values in .env, and that the node is reachable from this machine."
+    )
+    raise SystemExit(1)
 
 # Global Variables (Globals)
 last_price_update = 0 # Variable for tracking when to update price
@@ -92,13 +195,7 @@ last_blockchain_update = 0 # Variable for tracking when to update blockchain inf
 fig = None # Creating global fig
 canvas = None # Creating global canvas
 previous_chain, previous_network, previous_fees = None, None, None
-blockchain_chain = ""
-blockchain_blocks = ""
-blockchain_verification_progress = ""
-node_connections = ""
-cpu_temp = ""
 ax = None
-saved_timestamp = ""
 global root
 root = None
 app_running = True
@@ -107,11 +204,14 @@ long_press_duration = 2
 price_timer_id = None
 blockchain_timer_id = None
 display_timer_id = None
+chart_alternation_timer_id = None
 # Timestamp of the last time the countdown-triggered update was fired. Used
 # to avoid repeatedly forcing updates during the ~1s window where the
 # countdown displays "00:00" as update_countdown runs every 100ms.
 last_countdown_trigger_time = 0
 current_screen = "main"  # "main" or "more"
+chart_mode = "price"  # "price" or "mining" — which chart the main screen shows
+last_mining_update = 0  # Variable for tracking when to update mining info
 chart_frame = None
 more_fig = None
 more_canvas = None
@@ -119,6 +219,7 @@ more_ax = None
 countdown_label = None
 exit_button = None
 more_button = None
+mining_button = None
 options_button = None
 toolbar_frame = None
 settings_window = None
@@ -128,12 +229,15 @@ SETTINGS_OPTIONS = {
     'color_scheme': ['static', 'dynamic'],
     'chart_type': ['line', 'candlestick', 'baseline'],
     'color_scheme_interval': ['daily', 'hourly', '30min', '15min', '5min'],
+    'chart_alternating': ['off', 'on'],
+    'chart_alternating_interval': ['15s', '30s', '1m'],
 }
 SETTINGS_LABELS = {
     'viewing_mode': 'Viewing Mode',
     'color_scheme': 'Color Scheme',
     'chart_type': 'Chart Type',
     'color_scheme_interval': 'Interval',
+    'chart_alternating': 'Chart',
 }
 
 # Display Settings pop-up sizing: fonts, padding and button sizes are all
@@ -154,7 +258,15 @@ PALETTE = {
     'good': '#0ca30c',
     'critical': '#d03b3b',
     'accent': '#005678',
+    'bitcoin_orange': '#f7931a',
 }
+
+# Colors the 1-week hashrate trend line relative to its own min/max, matching
+# mempool.space's mining chart (green at the low end shading through yellow
+# to red/pink at the high end) instead of one flat color.
+HASHRATE_GRADIENT = LinearSegmentedColormap.from_list(
+    'hashrate_gradient', [PALETTE['good'], '#e8a33d', '#d6336c']
+)
 
 def save_config_value(key, value):
     """Persist a single display setting to config.json, without disturbing
@@ -174,6 +286,13 @@ def apply_setting_change(key, value):
     immediately re-render the chart from cache so the change is visible
     right away (used by the More screen's settings controls)."""
     global viewing_mode, color_scheme, chart_type, color_scheme_interval, color_scheme_interval_minutes
+    global chart_alternating, chart_alternating_interval, chart_alternating_interval_seconds
+
+    # Whether this key affects the price chart's own rendering (and so needs
+    # an immediate re-render) — false for the chart-alternation settings,
+    # which just start/stop a timer and shouldn't yank the visible chart
+    # back to price out from under the mining dashboard.
+    affects_price_chart = True
 
     if key == 'viewing_mode':
         viewing_mode = value
@@ -185,21 +304,36 @@ def apply_setting_change(key, value):
         color_scheme_interval = value
         color_scheme_interval_minutes = COLOR_SCHEME_INTERVAL_MINUTES.get(value, 60)
         config['update_intervals']['price'] = color_scheme_interval_minutes * 60
+    elif key == 'chart_alternating':
+        chart_alternating = value
+        affects_price_chart = False
+        restart_chart_alternation()
+    elif key == 'chart_alternating_interval':
+        chart_alternating_interval = value
+        chart_alternating_interval_seconds = ALTERNATING_INTERVAL_SECONDS.get(value, 30)
+        affects_price_chart = False
+        restart_chart_alternation()
 
     save_config_value(key, value)
-    update_price_chart_from_cache()
+    if affects_price_chart and chart_mode == "price":
+        # These settings only affect the price chart; the mining dashboard
+        # ignores them, so don't yank the visible chart away from it.
+        update_price_chart_from_cache()
 
 def update_display():
     global app_running
     if not app_running:
-        return  # Don't do anything if the app is not running   
-    update_price_chart()      # Checks its own schedule internally
+        return  # Don't do anything if the app is not running
+    if chart_mode == "mining":
+        update_mining_dashboard()  # Checks its own schedule internally
+    else:
+        update_price_chart()       # Checks its own schedule internally
     update_blockchain_info()  # Checks its own schedule internally
     if app_running:
         display_timer_id = root.after(300000, update_display)
 
 def create_display():
-    global root, fig, canvas, chart_frame, exit_button, more_button, options_button, countdown_label, toolbar_frame
+    global root, fig, canvas, chart_frame, exit_button, more_button, mining_button, options_button, countdown_label, toolbar_frame
     root = tk.Tk()
     root.title("Bitcoin Node Information")
 
@@ -262,6 +396,13 @@ def create_display():
     )
     more_button.pack(side=tk.LEFT)
 
+    mining_button = tk.Button(
+        toolbar_frame, text="Mining", command=toggle_chart_mode,
+        fg=PALETTE['accent'], activeforeground=PALETTE['accent'],
+        **button_style
+    )
+    mining_button.pack(side=tk.LEFT)
+
     options_button = tk.Button(
         toolbar_frame, text="Options", command=show_settings_window,
         fg=PALETTE['accent'], activeforeground=PALETTE['accent'],
@@ -309,12 +450,15 @@ def show_more_screen():
         canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
         
         # Load from cache instead of forcing update
-        update_price_chart_from_cache()
+        if chart_mode == "mining":
+            update_mining_dashboard_from_cache()
+        else:
+            update_price_chart_from_cache()
         update_blockchain_info(force_update=True)
-        
+
         # Ensure UI elements are visible
         toolbar_frame.lift()
-        
+
         current_screen = "main"
         return
     
@@ -338,6 +482,64 @@ def show_more_screen():
     more_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
 
     update_more_metrics()
+
+def toggle_chart_mode():
+    """Switch the main screen's chart between the price chart and the mining
+    dashboard. Only meaningful while the main screen is showing — if the Node
+    screen is up, this just flips which chart comes back when it's closed."""
+    global chart_mode, mining_button
+
+    chart_mode = "mining" if chart_mode == "price" else "price"
+    mining_button.config(text="Price" if chart_mode == "mining" else "Mining")
+
+    if current_screen != "main":
+        return  # Node screen is showing; the new mode takes effect when it closes.
+
+    if chart_mode == "mining":
+        update_mining_dashboard()
+    else:
+        update_price_chart_from_cache()
+
+def restart_chart_alternation():
+    """(Re)start the auto-alternation timer per the current
+    chart_alternating/chart_alternating_interval settings. Cancels any
+    existing timer first, so it's safe to call whenever either setting
+    changes, or once at startup to pick up what was loaded from config.
+
+    Schedules against the same hour-aligned grid as the price countdown
+    (time_until_next_aligned_update) rather than a plain relative delay, so
+    alternation ticks land on round wall-clock boundaries (e.g. :25, :20,
+    :15 before a 30-minute price update) instead of drifting to whatever
+    second the app happened to start or the setting was last changed."""
+    global chart_alternation_timer_id
+
+    if chart_alternation_timer_id is not None:
+        try:
+            root.after_cancel(chart_alternation_timer_id)
+        except Exception:
+            pass
+        chart_alternation_timer_id = None
+
+    if chart_alternating == "on" and root is not None and app_running:
+        delay_seconds = time_until_next_aligned_update(chart_alternating_interval_seconds)
+        chart_alternation_timer_id = root.after(
+            int(delay_seconds * 1000), alternate_chart
+        )
+
+def alternate_chart():
+    """Timer callback for chart_alternating: flip the main screen's chart
+    (price <-> mining) and reschedule itself. Reuses toggle_chart_mode so
+    the manual "Mining"/"Price" toolbar button stays in sync with whichever
+    chart is showing."""
+    global chart_alternation_timer_id
+    if app_running and chart_alternating == "on":
+        toggle_chart_mode()
+        delay_seconds = time_until_next_aligned_update(chart_alternating_interval_seconds)
+        chart_alternation_timer_id = root.after(
+            int(delay_seconds * 1000), alternate_chart
+        )
+    else:
+        chart_alternation_timer_id = None
 
 def close_settings_window():
     """Tear down the Display Settings pop-up if it's open."""
@@ -448,13 +650,57 @@ def build_settings_window(scale, refit=True):
         for option, button in group.items():
             style_option_button(button, option == globals()[key])
 
+    # "Chart" row: an Alternating on/off toggle plus, right next to it, how
+    # often it flips — one row rather than two, since the interval is only
+    # meaningful in the context of the toggle beside it.
+    chart_row = len(keys) + 1
+    chart_label = tk.Label(
+        container, text=SETTINGS_LABELS['chart_alternating'], bg=PALETTE['surface'], fg=PALETTE['secondary'],
+        font=body_font, anchor='w'
+    )
+    chart_label.grid(row=chart_row, column=0, sticky='w', padx=(int(14 * s), int(6 * s)), pady=int(4 * s))
+
+    chart_options_row = tk.Frame(container, bg=PALETTE['surface'])
+    chart_options_row.grid(row=chart_row, column=1, sticky='w', padx=(0, int(14 * s)), pady=int(4 * s))
+
+    def sub_label(parent, text):
+        lbl = tk.Label(parent, text=text, bg=PALETTE['surface'], fg=PALETTE['muted'], font=body_font)
+        lbl.pack(side=tk.LEFT, padx=(0, int(6 * s)))
+        return lbl
+
+    sub_label(chart_options_row, "Alternating")
+    alternating_group = {}
+    for option in SETTINGS_OPTIONS['chart_alternating']:
+        button = tk.Button(
+            chart_options_row, text=option, font=body_font,
+            bd=0, highlightthickness=0, padx=pad * 2, pady=pad,
+        )
+        button.pack(side=tk.LEFT, padx=(0, int(3 * s)))
+        button.config(command=lambda v=option, g=alternating_group: choose_setting('chart_alternating', v, g))
+        alternating_group[option] = button
+    for option, button in alternating_group.items():
+        style_option_button(button, option == chart_alternating)
+
+    sub_label(chart_options_row, "Every")
+    interval_group = {}
+    for option in SETTINGS_OPTIONS['chart_alternating_interval']:
+        button = tk.Button(
+            chart_options_row, text=option, font=body_font,
+            bd=0, highlightthickness=0, padx=pad * 2, pady=pad,
+        )
+        button.pack(side=tk.LEFT, padx=(0, int(3 * s)))
+        button.config(command=lambda v=option, g=interval_group: choose_setting('chart_alternating_interval', v, g))
+        interval_group[option] = button
+    for option, button in interval_group.items():
+        style_option_button(button, option == chart_alternating_interval)
+
     close_button = tk.Button(
         container, text="Close", command=close_settings_window,
         bg=PALETTE['surface'], fg=PALETTE['secondary'], bd=0, highlightthickness=0,
         activebackground=PALETTE['page'], activeforeground=PALETTE['primary'],
         font=body_font, padx=int(10 * s), pady=int(4 * s),
     )
-    close_button.grid(row=len(keys) + 1, column=0, columnspan=2, sticky='e',
+    close_button.grid(row=chart_row + 1, column=0, columnspan=2, sticky='e',
                       padx=int(14 * s), pady=(int(10 * s), int(12 * s)))
 
     settings_window.bind('<Escape>', lambda event: close_settings_window())
@@ -504,7 +750,10 @@ def update_more_metrics():
         current_price = 50000
         high_24h = 51000
         low_24h = 49000
-        address_balance = 1.0
+        # Falls back to a well-known public example address so the QR panel
+        # has something to render in --testing even with no WALLET_ADDRESS set.
+        qr_address = wallet_address or "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
+        address_balance = 1.0 if wallet_address else None
         last_update = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     else:
         try:
@@ -515,14 +764,17 @@ def update_more_metrics():
                 low_24h = min(p[1] for p in prices)
             else:
                 high_24h = low_24h = current_price
-            address_balance = get_address_balance('1FpaYV2cTk1W7WtHhsRP2kuNtKynNbeGoH')
+            qr_address = wallet_address
+            address_balance = get_address_balance(wallet_address) if wallet_address else None
             last_update = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         except Exception as e:
             logging.error(f"Error fetching data for more metrics: {e}")
             blockchain_info = network_info = fees = None
-            current_price = high_24h = low_24h = address_balance = 0
+            current_price = high_24h = low_24h = 0
+            qr_address = None
+            address_balance = None
             last_update = "Error"
-    
+
     chain_name = blockchain_info.get('chain', 'unknown') if blockchain_info else 'unknown'
     difficulty = blockchain_info.get('difficulty', 0) if blockchain_info else 0
     difficulty_text = format_difficulty(difficulty)
@@ -531,7 +783,7 @@ def update_more_metrics():
     fee_rates_usd = [0, 0, 0]
     if fees:
         fee_rates_usd = [fee * 0.00000001 * current_price for fee in fees]
-    usd_value = address_balance * current_price
+    usd_value = address_balance * current_price if address_balance is not None else None
 
     def label(text):
         return TextArea(text, textprops=dict(color=PALETTE['secondary'], fontsize=13))
@@ -551,8 +803,11 @@ def update_more_metrics():
                            value(f"L:${fee_rates_usd[0]:,.2f} M:${fee_rates_usd[1]:,.2f} H:${fee_rates_usd[2]:,.2f}" if fees else "N/A")], align="left", pad=0, sep=6),
         HPacker(children=[label("24h High:"), value(f"${high_24h:,.0f}", PALETTE['good'])], align="left", pad=0, sep=6),
         HPacker(children=[label("24h Low:"), value(f"${low_24h:,.0f}", PALETTE['critical'])], align="left", pad=0, sep=6),
-        HPacker(children=[label("Address Balance:"), value(f"{address_balance:.3f} BTC (${usd_value:,.0f})", PALETTE['accent'])], align="left", pad=0, sep=6),
     ]
+    if address_balance is not None:
+        rows.append(HPacker(children=[label("Address Balance:"),
+                                       value(f"{address_balance:.3f} BTC (${usd_value:,.0f})", PALETTE['accent'])],
+                             align="left", pad=0, sep=6))
     box = VPacker(children=rows, align="left", pad=0, sep=8)
     heading = TextArea("NODE METRICS", textprops=dict(color=PALETTE['primary'], fontsize=18, fontweight='bold'))
 
@@ -572,15 +827,36 @@ def update_more_metrics():
     more_ax.add_artist(anchored_heading)
     more_ax.add_artist(anchored_box)
 
+    # Receive QR, next to the metrics box — skipped entirely when no
+    # WALLET_ADDRESS is configured (or, outside --testing, when fetching it failed).
+    if qr_address:
+        qr_label = TextArea("Receive", textprops=dict(color=PALETTE['secondary'], fontsize=12, fontweight='bold'))
+        qr_array = get_wallet_qr_array(qr_address)
+        # Target a fixed on-screen width regardless of the QR's native pixel
+        # size, which varies with address length / matplotlib's chosen version.
+        qr_zoom = 150 / qr_array.shape[1]
+        qr_image = OffsetImage(qr_array, zoom=qr_zoom)
+        qr_children = [qr_label, qr_image]
+        if qr_address == DEFAULT_WALLET_ADDRESS:
+            qr_children.append(TextArea("Buy me a coffee ☕", textprops=dict(color=PALETTE['bitcoin_orange'], fontsize=11, fontweight='bold')))
+        qr_content = VPacker(children=qr_children, align="center", pad=0, sep=4)
+        anchored_qr = AnchoredOffsetbox(loc='upper right', child=qr_content, pad=0.8, frameon=True,
+                                         bbox_to_anchor=(0.98, 0.98), bbox_transform=more_ax.transAxes, borderpad=0)
+        anchored_qr.patch.set_boxstyle("round,pad=0.6")
+        anchored_qr.patch.set_facecolor(PALETTE['page'])
+        anchored_qr.patch.set_edgecolor(PALETTE['baseline'])
+        anchored_qr.patch.set_alpha(0.9)
+        more_ax.add_artist(anchored_qr)
+
     more_fig.tight_layout()
     more_canvas.draw()
 
 def proper_exit():
-    global app_running, root, price_timer_id, blockchain_timer_id, display_timer_id
+    global app_running, root, price_timer_id, blockchain_timer_id, display_timer_id, chart_alternation_timer_id
     app_running = False
-    
+
     # Cancel known timer IDs safely
-    for timer_id in [price_timer_id, blockchain_timer_id, display_timer_id]:
+    for timer_id in [price_timer_id, blockchain_timer_id, display_timer_id, chart_alternation_timer_id]:
         if timer_id and timer_id != 'None':
             try:
                 root.after_cancel(timer_id)
@@ -604,7 +880,10 @@ def on_release(event):
     if press_start_time[0] is not None:
         press_duration = time.time() - press_start_time[0]
         if press_duration >= long_press_duration:
-            update_price_chart(force_update=True)
+            if chart_mode == "mining":
+                update_mining_dashboard(force_update=True)
+            else:
+                update_price_chart(force_update=True)
             update_blockchain_info(force_update=True)
         press_start_time[0] = None
 def get_cpu_temp():
@@ -710,6 +989,19 @@ def get_address_balance(address):
         logging.error(f"Error getting address balance: {e}")
         return 0
 
+_wallet_qr_cache = {}  # address -> numpy array, since the QR never changes for a static address
+def get_wallet_qr_array(address):
+    """Render a bitcoin: URI QR code for address as an RGB array matplotlib can
+    imshow, caching it since a static address's QR never changes between the
+    Node screen's redraws."""
+    if address not in _wallet_qr_cache:
+        qr = qrcode.QRCode(border=2, box_size=6)
+        qr.add_data(f"bitcoin:{address}")
+        qr.make(fit=True)
+        img = qr.make_image(fill_color=PALETTE['page'], back_color=PALETTE['primary']).convert('RGB')
+        _wallet_qr_cache[address] = np.array(img)
+    return _wallet_qr_cache[address]
+
 def load_price_from_cache():
     """Load price data from cache without fetching new data"""
     try:
@@ -727,8 +1019,27 @@ def load_price_from_cache():
     except Exception as e:
         logging.error(f"Error loading price from cache: {e}")
         return None, None, None
+def _kraken_ohlc(interval_minutes):
+    """Fetch Kraken OHLC candles for XBT/USD at the given interval (in
+    minutes; Kraken accepts 1, 5, 15, 30, 60, 240, 1440, 10080, 21600).
+    Returns a list of [timestamp_ms, open, high, low, close] sorted oldest
+    first, or None on failure. Kraken returns HTTP 200 even on API errors
+    (e.g. bad params), so the "error" field has to be checked explicitly."""
+    url = "https://api.kraken.com/0/public/OHLC"
+    response = requests.get(url, params={"pair": "XBTUSD", "interval": interval_minutes}, timeout=10)
+    response.raise_for_status()
+    data = response.json()
+    if data.get("error"):
+        raise ValueError(f"Kraken API error: {data['error']}")
+    # result has one pair-name key (e.g. "XXBTZUSD") plus "last"; the pair
+    # name isn't guaranteed stable, so pick it out by exclusion instead of
+    # hardcoding it.
+    candles = next(v for k, v in data["result"].items() if k != "last")
+    return [[int(c[0]) * 1000, float(c[1]), float(c[2]), float(c[3]), float(c[4])] for c in candles]
+
 def get_bitcoin_price():
-    """Fetch current Bitcoin price and historical data"""
+    """Fetch current Bitcoin price and historical data from Kraken (no API
+    key required, generous rate limits, US-accessible)."""
     try:
         if testing:
             if os.path.exists(CACHE_FILE): # Check if cache file exists
@@ -739,22 +1050,27 @@ def get_bitcoin_price():
                     prices = cached_data["prices"]
                     print("Loaded price data from cache.")
                     return current_price, daily_change, prices
-        # Current price
-        url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd"
-        response = requests.get(url)
-        response.raise_for_status()
-        current_data = response.json()
-        current_price = current_data["bitcoin"]["usd"]
 
-        # Previous 24h of price history. Using days=1 on the plain market_chart
-        # endpoint (rather than market_chart/range) gets 5-minute granularity
-        # for free — /range is capped at hourly on CoinGecko's free tier.
-        historical_url = "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1"
-        historical_response = requests.get(historical_url)
-        historical_response.raise_for_status()
-        historical_data = historical_response.json()
-        prices = historical_data['prices']
-        
+        # Current price
+        ticker_url = "https://api.kraken.com/0/public/Ticker"
+        response = requests.get(ticker_url, params={"pair": "XBTUSD"}, timeout=10)
+        response.raise_for_status()
+        ticker_data = response.json()
+        if ticker_data.get("error"):
+            raise ValueError(f"Kraken API error: {ticker_data['error']}")
+        ticker = next(iter(ticker_data["result"].values()))
+        current_price = float(ticker["c"][0])
+
+        # Previous 24h of price history, from 5-minute candles (Kraken's
+        # OHLC endpoint returns up to 720 candles regardless of interval, so
+        # this covers well over 24h and gets filtered below).
+        candles = _kraken_ohlc(5)
+        if candles is None:
+            return current_price, None, None
+
+        cutoff_ms = (datetime.now().timestamp() - 24 * 3600) * 1000
+        prices = [[c[0], c[4]] for c in candles if c[0] >= cutoff_ms]  # [timestamp_ms, close]
+
         if prices:
             previous_close_price = prices[0][1]
             daily_change = (current_price - previous_close_price) / previous_close_price * 100
@@ -762,21 +1078,79 @@ def get_bitcoin_price():
             return current_price, daily_change, prices
         else:
             return current_price, None, None
-    except requests.RequestException as e:
+    except (requests.RequestException, ValueError, KeyError) as e:
         logging.error(f"Error fetching price data: {e}")
         return None, None, None
 
 def get_bitcoin_ohlc():
-    """Fetch real 30-minute OHLC candles from CoinGecko (actual exchange-derived
+    """Fetch real 30-minute OHLC candles from Kraken (actual exchange-derived
     open/high/low/close, not approximated from the plain price series)."""
     try:
-        url = "https://api.coingecko.com/api/v3/coins/bitcoin/ohlc?vs_currency=usd&days=1"
-        response = requests.get(url)
-        response.raise_for_status()
-        return response.json()  # [[timestamp_ms, open, high, low, close], ...]
-    except requests.RequestException as e:
+        candles = _kraken_ohlc(30)
+        if candles is None:
+            return None
+        cutoff_ms = (datetime.now().timestamp() - 24 * 3600) * 1000
+        return [c for c in candles if c[0] >= cutoff_ms]  # [[timestamp_ms, open, high, low, close], ...]
+    except (requests.RequestException, ValueError, KeyError) as e:
         logging.error(f"Error fetching OHLC data: {e}")
         return None
+
+def get_difficulty_adjustment():
+    """Fetch current difficulty-epoch progress from mempool.space: blocks and
+    time remaining until the next retarget, and the estimated % change."""
+    try:
+        url = "https://mempool.space/api/v1/difficulty-adjustment"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        logging.error(f"Error fetching difficulty adjustment: {e}")
+        return None
+
+def get_mining_hashrate_history(period=MINING_CHART_PERIOD):
+    """Fetch network hashrate/difficulty history from mempool.space over the
+    given period (one of mempool's fixed windows: 3d, 1w, 1m, 3m, 6m, 1y, 2y,
+    3y, all). Returns daily hashrate samples plus one difficulty sample per
+    retarget, along with the latest 1-week-average hashrate and difficulty."""
+    try:
+        url = f"https://mempool.space/api/v1/mining/hashrate/{period}"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        logging.error(f"Error fetching mining hashrate history: {e}")
+        return None
+
+def fetch_and_cache_mining_data():
+    """Fetch fresh difficulty-adjustment and hashrate/difficulty history, and
+    cache both together so the mining dashboard has something to show
+    instantly (via load_mining_from_cache) next launch or when data's not due
+    for a refresh yet."""
+    difficulty_adj = get_difficulty_adjustment()
+    hashrate_data = get_mining_hashrate_history()
+    if difficulty_adj is not None and hashrate_data is not None:
+        try:
+            with open(MINING_CACHE_FILE, 'w') as cache_file:
+                json.dump({
+                    "difficulty_adjustment": difficulty_adj,
+                    "hashrate_data": hashrate_data,
+                    "timestamp": time.time()
+                }, cache_file)
+        except Exception as e:
+            logging.error(f"Error caching mining data: {e}")
+    return difficulty_adj, hashrate_data
+
+def load_mining_from_cache():
+    """Load mining data from cache without fetching new data."""
+    try:
+        if os.path.exists(MINING_CACHE_FILE):
+            with open(MINING_CACHE_FILE, 'r') as cache_file:
+                cached_data = json.load(cache_file)
+                return cached_data.get("difficulty_adjustment"), cached_data.get("hashrate_data")
+        return None, None
+    except Exception as e:
+        logging.error(f"Error loading mining data from cache: {e}")
+        return None, None
 
 def show_chart_message(text):
     """Clear the main chart and show a centered status message."""
@@ -836,7 +1210,7 @@ def _plot_dynamic_price_line(ax, plot_dates, plot_values):
         prev_point = points[-1]
 
 def _real_ohlc_candles():
-    """Fetch CoinGecko's real 30-min candles and aggregate them up to
+    """Fetch Kraken's real 30-min candles and aggregate them up to
     color_scheme_interval. Returns a list of (bucket_key, open, high, low, close)
     or None if unavailable (network error, or interval too fine to benefit)."""
     if testing or color_scheme_interval_minutes <= 30:
@@ -869,7 +1243,7 @@ def _real_ohlc_candles():
 def _approximate_candles_from_prices(plot_dates, plot_values):
     """Approximate candles by bucketing the plain price series (open/close =
     first/last price in the bucket, high/low = its min/max). Used when the
-    interval is too fine for CoinGecko's real 30-min OHLC to help (15min, 5min)."""
+    interval is too fine for Kraken's real 30-min OHLC to help (15min, 5min)."""
     if len(plot_values) < 2:
         return []
     buckets = []  # [(bucket_key, [value, ...]), ...]
@@ -883,7 +1257,7 @@ def _approximate_candles_from_prices(plot_dates, plot_values):
 
 def _plot_candlestick_price(ax, plot_dates, plot_values):
     """Draw the price series as OHLC candlesticks. Intervals coarser than
-    CoinGecko's native 30-minute OHLC granularity (hourly, daily) use real
+    Kraken's native 30-minute OHLC granularity (hourly, daily) use real
     exchange-derived candles; finer intervals (15min, 5min) approximate
     candles from the plain price series, which is all that's available at
     that resolution."""
@@ -1022,6 +1396,244 @@ def render_price_chart(current_price, daily_change, prices):
     fig.tight_layout(pad=0.5, h_pad=0.8, w_pad=0.5)
     canvas.draw()
 
+def _dashboard_scale(fig):
+    """Font-scale factor for the mining dashboard, relative to this app's
+    desktop baseline figure size (10x4 in). The figure is resized by Tk to
+    match whatever window/screen it's actually drawn in, but matplotlib
+    fontsizes are absolute points — without this, text sized for the
+    desktop crowds or overflows the much smaller canvas a constrained Pi
+    display renders into. Clamped so a tiny screen doesn't shrink text to
+    unreadable, and a larger-than-baseline window doesn't balloon it."""
+    base_w, base_h = 10.0, 4.0
+    fig_w, fig_h = fig.get_size_inches()
+    scale = min(fig_w / base_w, fig_h / base_h)
+    return max(0.55, min(scale, 1.15))
+
+def _draw_stat_tile(fig, grid_cell, label, big_text, unit_text, sub_text, value_color=None, scale=1.0):
+    """Draw one stat card (label / big value [+ small unit] / subtext)
+    into a gridspec cell. The unit is placed flush after the big value by
+    measuring its actual rendered width — mixed font sizes on one baseline
+    aren't something a single Text object can do, and a fixed character-width
+    guess drifts across the different figure sizes this app runs at (Pi vs.
+    desktop). sub_text may be a plain string (rendered in the muted color) or
+    a list of (text, color) segments for mixed-color subtext, e.g. a colored
+    +/-% figure inline with muted surrounding words. scale comes from
+    _dashboard_scale() and keeps these fixed-point fontsizes proportionate
+    to the actual rendered figure size."""
+    tile_ax = fig.add_subplot(grid_cell)
+    tile_ax.axis('off')
+    tile_ax.set_xlim(0, 1)
+    tile_ax.set_ylim(0, 1)
+
+    tile_ax.text(0.5, 0.80, label, transform=tile_ax.transAxes,
+                 ha='center', va='top', fontsize=13 * scale, fontweight='bold', color=PALETTE['accent'])
+
+    big_color = value_color or PALETTE['primary']
+    big = tile_ax.text(0.0, 0.38, big_text, transform=tile_ax.transAxes,
+                        ha='left', va='center', fontsize=24 * scale, fontweight='bold', color=big_color)
+
+    unit = None
+    if unit_text:
+        fig.canvas.draw()
+        bbox = big.get_window_extent(renderer=fig.canvas.get_renderer())
+        x_end = tile_ax.transAxes.inverted().transform((bbox.x1, 0))[0]
+        unit = tile_ax.text(x_end + 0.03, 0.34, unit_text, transform=tile_ax.transAxes,
+                     ha='left', va='center', fontsize=12 * scale, color=PALETTE['secondary'])
+
+    # Re-center the value (+ unit, if present) as one group now that its
+    # actual rendered width is known - the pair was built left-aligned at 0
+    # above so the unit could be measured flush against the value.
+    fig.canvas.draw()
+    group_x1 = (unit or big).get_window_extent(renderer=fig.canvas.get_renderer()).x1
+    group_width = tile_ax.transAxes.inverted().transform((group_x1, 0))[0]
+    offset = 0.5 - group_width / 2
+    big.set_x(offset)
+    if unit is not None:
+        unit.set_x(x_end + 0.03 + offset)
+
+    if sub_text:
+        parts = sub_text if isinstance(sub_text, list) else [(sub_text, PALETTE['muted'])]
+        sub_texts = []
+        x = 0.0
+        for part_text, part_color in parts:
+            t = tile_ax.text(x, 0.02, part_text, transform=tile_ax.transAxes,
+                              ha='left', va='bottom', fontsize=10 * scale, color=part_color)
+            fig.canvas.draw()
+            bbox = t.get_window_extent(renderer=fig.canvas.get_renderer())
+            x = tile_ax.transAxes.inverted().transform((bbox.x1, 0))[0]
+            sub_texts.append(t)
+        sub_offset = 0.5 - x / 2
+        for t in sub_texts:
+            t.set_x(t.get_position()[0] + sub_offset)
+
+def render_mining_dashboard(blockchain_data, difficulty_adj, hashrate_data):
+    """Render the mining-focused dashboard onto the shared fig/ax/canvas: a
+    row of stat tiles (blocks remaining to retarget, the estimated difficulty
+    change, and a next-halving countdown) above a dual-axis hashrate/
+    difficulty history chart."""
+    global fig, canvas, ax
+    fig.clear()
+    fig.patch.set_facecolor(PALETTE['page'])
+    scale = _dashboard_scale(fig)
+
+    gs = fig.add_gridspec(2, 3, height_ratios=[1.5, 3.2], hspace=0.7, wspace=0.3,
+                           top=0.88, bottom=0.13, left=0.11, right=0.92)
+
+    remaining_blocks = difficulty_adj.get('remainingBlocks', 0)
+    remaining_days = difficulty_adj.get('remainingTime', 0) / 1000 / 86400
+    difficulty_change = difficulty_adj.get('difficultyChange', 0)
+    previous_retarget = difficulty_adj.get('previousRetarget')
+    time_avg_ms = difficulty_adj.get('timeAvg') or 600000
+
+    # Prefer the node's own view of chain height; fall back to deriving it
+    # from mempool.space's next-retarget height so the dashboard still works
+    # (e.g. RPC unreachable) using only the mining API.
+    current_height = blockchain_data.get('blocks') if blockchain_data else None
+    if current_height is None:
+        next_retarget_height = difficulty_adj.get('nextRetargetHeight')
+        if next_retarget_height is not None:
+            current_height = next_retarget_height - remaining_blocks
+
+    if current_height is not None:
+        avg_block_time_s = time_avg_ms / 1000
+        _, _, halving_date = get_next_halving_info(current_height, avg_block_time_s)
+        halving_days_total = max((halving_date - datetime.now()).days, 0)
+        halving_years, halving_days = divmod(halving_days_total, 365)
+    else:
+        halving_date = None
+        halving_years = halving_days = 0
+
+    _draw_stat_tile(
+        fig, gs[0, 0], "Remaining", f"{remaining_blocks:,}", "blocks",
+        f"In ~{remaining_days:.0f} days" if remaining_days >= 1 else "In <1 day",
+        scale=scale
+    )
+
+    change_color = PALETTE['good'] if difficulty_change >= 0 else PALETTE['critical']
+    arrow = "▲" if difficulty_change >= 0 else "▼"
+    prev_text = ""
+    if previous_retarget is not None:
+        prev_color = PALETTE['good'] if previous_retarget >= 0 else PALETTE['critical']
+        sign = "+" if previous_retarget >= 0 else "-"
+        prev_text = [
+            ("Previous: ", PALETTE['muted']),
+            (f"{sign}{abs(previous_retarget):.2f}", prev_color),
+            ("%", PALETTE['muted']),
+        ]
+    _draw_stat_tile(
+        fig, gs[0, 1], "Estimate", f"{arrow} {abs(difficulty_change):.2f}%", None,
+        prev_text, value_color=change_color, scale=scale
+    )
+
+    if halving_date is not None:
+        halving_big = f"{halving_date.strftime('%b')} {halving_date.day}, {halving_date.year}"
+        if halving_years > 0:
+            year_word = "year" if halving_years == 1 else "years"
+            halving_sub = f"In ~{halving_years} {year_word}, {halving_days} days"
+        else:
+            halving_sub = f"In ~{halving_days} days"
+    else:
+        halving_big, halving_sub = "N/A", ""
+    _draw_stat_tile(fig, gs[0, 2], "Next Halving", halving_big, None, halving_sub, scale=scale)
+
+    ax = fig.add_subplot(gs[1, :])
+    ax.set_facecolor(PALETTE['surface'])
+
+    current_hashrate = hashrate_data.get('currentHashrate', 0)
+    current_difficulty = hashrate_data.get('currentDifficulty', 0)
+
+    hr_entries = hashrate_data.get('hashrates', [])
+    hr_dates = [datetime.fromtimestamp(e['timestamp']) for e in hr_entries]
+    hr_values = [e['avgHashrate'] for e in hr_entries]
+
+    # 1-week rolling mean of the daily samples, to overlay a smoothed trend
+    # on top of the noisier daily-mean series.
+    window = 7
+    hr_1w = []
+    for i in range(len(hr_values)):
+        chunk = hr_values[max(0, i - window + 1):i + 1]
+        hr_1w.append(sum(chunk) / len(chunk))
+
+    if hr_dates:
+        # Color both the noisy daily line and its smoothed trend by relative
+        # position within their shared min/max (green at the low end shading
+        # through yellow to red/pink at the high end), mirroring
+        # mempool.space's mining chart instead of one flat color per line.
+        hr_dates_num = mdates.date2num(hr_dates)
+        hr_norm = Normalize(vmin=min(hr_values + hr_1w), vmax=max(hr_values + hr_1w))
+
+        def _gradient_line(values, linewidth, alpha, zorder):
+            # avgHashrate samples are huge Python ints (~1e20, past int64
+            # range), so they must be cast to float explicitly — otherwise
+            # np.array() silently produces dtype=object, which set_array()
+            # then rejects.
+            values = np.asarray(values, dtype=float)
+            points = np.array([hr_dates_num, values]).T.reshape(-1, 1, 2)
+            segments = np.concatenate([points[:-1], points[1:]], axis=1)
+            lc = LineCollection(
+                segments, cmap=HASHRATE_GRADIENT, norm=hr_norm,
+                linewidth=linewidth, alpha=alpha, zorder=zorder
+            )
+            lc.set_array(values[:-1])
+            ax.add_collection(lc)
+
+        _gradient_line(hr_values, 0.8, 0.8, 2)
+        _gradient_line(hr_1w, 3, 1.0, 4)
+        ax.set_xlim(min(hr_dates_num), max(hr_dates_num))
+        ax.set_ylim(min(hr_values) * 0.97, max(hr_values) * 1.03)
+
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: format_hashrate(v)))
+    ax.tick_params(axis='y', colors=PALETTE['muted'], labelsize=9 * scale)
+    ax.tick_params(axis='x', colors=PALETTE['muted'], labelsize=9 * scale)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%b'))
+    ax.set_axisbelow(True)
+    ax.grid(axis='y', color=PALETTE['grid'], linewidth=0.6, alpha=0.5, zorder=0)
+
+    ax2 = ax.twinx()
+    diff_entries = hashrate_data.get('difficulty', [])
+    diff_dates = [datetime.fromtimestamp(e['time']) for e in diff_entries]
+    diff_values = [e['difficulty'] for e in diff_entries]
+    if diff_dates:
+        # Extend the last known difficulty out to the most recent hashrate
+        # date so the step line spans the full width of the chart instead of
+        # stopping short at the last retarget.
+        if hr_dates and diff_dates[-1] < hr_dates[-1]:
+            diff_dates = diff_dates + [hr_dates[-1]]
+            diff_values = diff_values + [diff_values[-1]]
+        ax2.step(diff_dates, diff_values, where='post', color='#d6336c', linewidth=2, zorder=3)
+
+    ax2.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v / 1e12:,.0f}T"))
+    ax2.tick_params(axis='y', colors=PALETTE['muted'], labelsize=9 * scale)
+    ax2.grid(False)
+
+    ax.spines['top'].set_visible(False)
+    ax2.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_color(PALETTE['baseline'])
+    ax.spines['bottom'].set_color(PALETTE['baseline'])
+    ax2.spines['right'].set_color(PALETTE['baseline'])
+
+    hashrate_val = ax.text(0.0, 1.02, format_hashrate(current_hashrate), transform=ax.transAxes, ha='left', va='bottom',
+            fontsize=16 * scale, fontweight='bold', color=PALETTE['primary'])
+    difficulty_val = ax.text(1.0, 1.02, format_difficulty(current_difficulty), transform=ax.transAxes, ha='right', va='bottom',
+            fontsize=16 * scale, fontweight='bold', color=PALETTE['primary'])
+
+    # Center each header over its value's actual rendered width rather than
+    # over the axes edge, since the values aren't fixed-width.
+    fig.canvas.draw()
+    disp_to_axes = ax.transAxes.inverted()
+    hr_bbox = hashrate_val.get_window_extent(renderer=fig.canvas.get_renderer())
+    diff_bbox = difficulty_val.get_window_extent(renderer=fig.canvas.get_renderer())
+    hr_center = disp_to_axes.transform(((hr_bbox.x0 + hr_bbox.x1) / 2, 0))[0]
+    diff_center = disp_to_axes.transform(((diff_bbox.x0 + diff_bbox.x1) / 2, 0))[0]
+
+    ax.text(hr_center, 1.13, "Hashrate (1w)", transform=ax.transAxes, ha='center', va='bottom',
+            fontsize=12 * scale, fontweight='bold', color=PALETTE['accent'])
+    ax.text(diff_center, 1.13, "Difficulty", transform=ax.transAxes, ha='center', va='bottom',
+            fontsize=12 * scale, fontweight='bold', color=PALETTE['accent'])
+
+    canvas.draw()
+
 def update_price_chart_from_cache():
     """Update the price chart using cached data without fetching new data"""
     global app_running
@@ -1097,6 +1709,55 @@ def update_price_chart(force_update=False):
             if price_timer_id is not None:
                 root.after_cancel(price_timer_id)
             price_timer_id = root.after(int(next_delay_ms), update_price_chart)
+
+def update_mining_dashboard_from_cache():
+    """Update the mining dashboard using cached data without fetching new
+    data (mirrors update_price_chart_from_cache, used when returning to the
+    main screen from the Node screen)."""
+    try:
+        difficulty_adj, hashrate_data = load_mining_from_cache()
+        if difficulty_adj is None or hashrate_data is None:
+            show_chart_message("No cached mining data available.\nPlease wait for next update.")
+            return
+        render_mining_dashboard(previous_chain, difficulty_adj, hashrate_data)
+    except Exception as e:
+        logging.error(f"Error updating mining dashboard from cache: {e}")
+        show_chart_message("Error loading cached mining data.")
+
+def update_mining_dashboard(force_update=False):
+    """Fetch (or reuse cached) mining data and render the mining dashboard.
+    Mirrors update_price_chart's fetch-on-schedule/fallback-to-cache shape,
+    using its own interval (config['update_intervals']['mining'], default 15
+    minutes — difficulty/hashrate move far slower than price)."""
+    global last_mining_update, app_running
+    if not app_running:
+        return
+
+    current_time = time.time()
+    mining_interval = config.get('update_intervals', {}).get('mining', 900)
+
+    try:
+        did_fetch = force_update or last_mining_update == 0 or (current_time - last_mining_update >= mining_interval)
+        if did_fetch:
+            difficulty_adj, hashrate_data = fetch_and_cache_mining_data()
+        else:
+            difficulty_adj, hashrate_data = load_mining_from_cache()
+
+        if difficulty_adj is None or hashrate_data is None:
+            # Fetch failed (or wasn't due) and there's nothing usable yet — try the cache once more.
+            difficulty_adj, hashrate_data = load_mining_from_cache()
+
+        if difficulty_adj is not None and hashrate_data is not None:
+            render_mining_dashboard(previous_chain, difficulty_adj, hashrate_data)
+            if did_fetch:
+                last_mining_update = current_time
+        else:
+            logging.error("No mining data available when updating mining dashboard; will retry shortly.")
+            show_chart_message("No mining data available.\nRetrying shortly.")
+    except Exception as e:
+        logging.error(f"Error updating mining dashboard: {e}")
+        show_chart_message("Error loading mining data.")
+
 def get_node_info(rpc_connection):
     try:
         blockchain_info = rpc_connection.getblockchaininfo()
@@ -1112,25 +1773,13 @@ def update_node_table(blockchain_data, network_data, fees):
     # Format blocks and headers with thousands separators (e.g. 960,015)
     blockchain_blocks = f"{blockchain_data['blocks']:,}/{blockchain_data['headers']:,}"
     blockchain_verification_progress = f"{blockchain_data['verificationprogress'] * 100:.2f}%"
-    #TODO: 
-    # node_connections = f"{network_data['connections']}"
-    #TODO: 
-    # node_subversion = f"{network_data['subversion']}"
-    #TODO: 
-    # node_connections_in, node_connections_out = f"{network_data['connections_in']}", f"{network_data['connections_out']}"
-                
+
     # Difficulty formatting
     difficulty = blockchain_data['difficulty']
     formatted_difficulty = format_difficulty(difficulty)
-    
-    if connect_to == 'raspiblitz': # This does nothing, can be changed when running on desktop as you can't fetch the cpu temp with this...
-        # Do nothing
-        # print("Changed this cuz I'm on Pi.")
-        cpu_temp = get_cpu_temp()
-    else:
-        cpu_temp = get_cpu_temp()
-    # Get fee estimates
-    
+
+    cpu_temp = get_cpu_temp()
+
     # Create or update the legend here
     if ax is not None:  # Ensure ax is defined
         if str(blockchain_verification_progress) == '100.00%':
@@ -1208,7 +1857,7 @@ def update_node_table(blockchain_data, network_data, fees):
     return  
 
 def update_blockchain_info(force_update=False):
-    global app_running, root, last_blockchain_update, blockchain_chain, blockchain_blocks, blockchain_verification_progress, node_connections, cpu_temp, previous_chain, previous_network, previous_fees, saved_timestamp, blockchain_timer_id
+    global app_running, root, last_blockchain_update, previous_chain, previous_network, previous_fees, blockchain_timer_id
     if not app_running:
         return  # Don't do anything if the app is not running
     current_time = time.time()
@@ -1217,7 +1866,6 @@ def update_blockchain_info(force_update=False):
 
     try: # Let's update info
         new_chain_info, new_network_info, fees = get_node_info(rpc_connection)
-        saved_timestamp = get_timestamp()
         # If successful go to bottom to call update_node_table function
         update_node_table(new_chain_info, new_network_info, fees) # Call the update function if we're able to connect
         # Store previous values
@@ -1245,6 +1893,32 @@ def format_difficulty(difficulty):
     else:
         return f"{difficulty:,.2f}"
 
+def format_hashrate(hashrate_hs):
+    """Format a hashrate given in H/s, picking whichever unit (ZH/s down to
+    TH/s) keeps the number readable — matches how mempool.space labels its
+    hashrate axis, where the network's current ~900 EH/s and >1 ZH/s peaks
+    both need to read cleanly on the same chart."""
+    if hashrate_hs >= 1e21:
+        return f"{hashrate_hs / 1e21:.2f} ZH/s"
+    elif hashrate_hs >= 1e18:
+        return f"{hashrate_hs / 1e18:.0f} EH/s"
+    elif hashrate_hs >= 1e15:
+        return f"{hashrate_hs / 1e15:.0f} PH/s"
+    elif hashrate_hs >= 1e12:
+        return f"{hashrate_hs / 1e12:.0f} TH/s"
+    else:
+        return f"{hashrate_hs:,.0f} H/s"
+
+def get_next_halving_info(current_height, avg_block_time_seconds=600):
+    """Project the next halving's block height and date from the current
+    block height and a recent average block time (seconds/block). Halvings
+    land every 210,000 blocks."""
+    halving_interval = 210_000
+    next_halving_block = ((current_height // halving_interval) + 1) * halving_interval
+    remaining_blocks = next_halving_block - current_height
+    estimated_date = datetime.now() + timedelta(seconds=remaining_blocks * avg_block_time_seconds)
+    return next_halving_block, remaining_blocks, estimated_date
+
 def main():
     global root
     try:
@@ -1253,17 +1927,22 @@ def main():
         
         # Schedule countdown to start after GUI is ready
         root.after(500, update_countdown)
-        
+
+        # Picks up chart_alternating if it was already "on" in config.
+        restart_chart_alternation()
+
         root.mainloop()
     except tk.TclError as e:
         logging.error(
             f"An error occurred while creating the display. {e} "
             "If running headless, ensure DISPLAY is set correctly."
         )
-    except KeyboardInterrupt as e:
-        logging.error(f"User interrupted program. {e}")
-    except Exception as e:
-        logging.error(f"An error occurred when initializing the app. {e}")
+    except KeyboardInterrupt:
+        logging.info("User interrupted program (Ctrl+C).")
+    except Exception:
+        # Full traceback (not just str(e)) so the log actually shows the root
+        # cause when something unanticipated goes wrong during startup/runtime.
+        logging.exception("An unexpected error occurred while running the app.")
 
 if __name__ == "__main__":
     main()

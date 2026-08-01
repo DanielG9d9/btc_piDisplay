@@ -2,3 +2,6 @@ python-bitcoinrpc
 requests
 matplotlib
 pytz
+python-dotenv
+qrcode
+Pillow
