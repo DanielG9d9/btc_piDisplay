@@ -10,6 +10,7 @@ My build consists of a raspberry pi 4 (8gb), 1 TB HHD, and a 5" display from [Am
 - [Features](#features)
 - [Pre-requisites](#pre-requisites)
 - [Installing piDisplay](#Installing-piDisplay)
+- [Auto-Start on Boot](#auto-start-on-boot)
 - [Manual Start](#manually-starting-the-program)
 - [Debug / Testing](#debug--testing)
 <!-- - [Usage](#usage)
@@ -34,7 +35,7 @@ My build consists of a raspberry pi 4 (8gb), 1 TB HHD, and a 5" display from [Am
 ## Pre-requisites
 1. You should have a bitcoin node operational on your local network.
 2. You should know the RPC login information (user/pwd).
-3. You should be able to connect to the target display via ssh (Termius or VS Code) or terminal with a keyboard connected to the Pi.
+3. You should be able to connect to the target display via ssh (Termius or VS Code) or terminal with a keyboard connected to the node.
 
 Recommended node software:
 1. Parmanode - https://parmanode.com/install/ (Install it on RaspiPi OS not Linux)
@@ -53,6 +54,28 @@ Follow these steps if you're trying to run a new Pi Display. You can copy / past
     - ENABLE SSH AND USE PASSWORD AUTHENTICATION!
 6. Confirm settings and write to the SD card.
 7. Boot the Pi with the SD card and ensure you have WiFi.
+
+### Optional: Auto-Clone & Install On First Boot
+If you'd rather not type the `git clone`/`install.sh` commands over SSH at all, you can have the Pi do it itself the very first time it boots — no custom OS image required.
+
+Raspberry Pi Imager's "OS customization" screen (step 5 above) works by writing a script called `firstrun.sh` onto the SD card's boot partition, which runs once as root on first boot to apply your hostname/SSH/WiFi settings and then deletes itself. You can append your own commands to the end of that same script (before the self-delete/reboot lines) to have it clone this repo and kick off `install.sh` automatically:
+
+1. After Imager finishes writing the card, re-insert it into your computer (or leave it mounted) and open the boot partition — it'll be named `bootfs` or `boot`.
+2. Open `firstrun.sh` in a text editor. Scroll to the bottom, and just above the final `rm -f /boot/firstrun.sh`/reboot lines, insert (replacing `pi` with whichever username you set in step 5):
+    ```bash
+    su - pi -c '
+        DEBIAN_FRONTEND=noninteractive sudo apt-get update
+        DEBIAN_FRONTEND=noninteractive sudo apt-get install -y git
+        cd /home/pi
+        git clone https://github.com/DanielG9d9/btc_piDisplay.git
+        cd btc_piDisplay
+        printf "Y\nN\n" | ./install.sh > /home/pi/btc_piDisplay/first_boot_install.log 2>&1
+    '
+    ```
+    The piped `Y` answers "yes" to enabling auto-start on boot; the `N` skips the interactive `nano config.json` prompt, since there's no terminal attached during first boot.
+3. Save the file, eject the card, and boot the Pi as normal.
+
+First boot will take a few minutes longer than usual while it installs packages. Once it's up, SSH in and check `~/btc_piDisplay/first_boot_install.log` if the display doesn't appear — and don't forget you still need to edit `config.json` with your node's RPC details (see below), since that step was skipped automatically.
 
 ## Install piDisplay
 
@@ -87,6 +110,19 @@ Follow these steps to install and set up the project:
 | `chart_alternating_interval` | '30s', '1m', or '5m' - How often the main screen switches when `chart_alternating` is on. |
 | `testing` | Specify if testing so the program will use fake data and work on a desktop display. Can also pass --testing in start command: ```python piDisplay.py --testing``` |
     
+## Auto-Start On Boot
+`install.sh` will ask "Enable auto-start on boot? (Y/N)". Answering `Y` installs a `systemd` service (`piDisplay.service`) that launches the display automatically once the desktop session comes up, and restarts it automatically if it ever crashes — no need to log in and double-click the desktop icon after a power loss or reboot.
+
+If you said `N` during install and want to turn it on later (or want to turn it off), just re-run `./install.sh` from the repository folder and answer the prompt differently — it's safe to run again.
+
+Useful commands once the service is installed:
+```bash
+sudo systemctl status piDisplay.service      # Check whether it's running
+journalctl -u piDisplay.service -f           # Tail its logs
+sudo systemctl disable --now piDisplay.service  # Turn off auto-start and stop it
+sudo systemctl start piDisplay.service       # Start it manually without rebooting
+```
+
 ## Manually Starting The Program
 If you need to manually start the display after a reboot or any reason you can easily do so by double clicking the Run Display.sh icon and "Execute."  
   

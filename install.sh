@@ -48,6 +48,41 @@ EOF
     chmod +x "Run Display.sh"
 # fi
 
+echo "########################################################################"
+echo "Would you like piDisplay to start automatically on boot?"
+echo "This installs a systemd service that launches the display once the desktop session is ready, and restarts it if it ever crashes."
+read -p "Enable auto-start on boot? (Y/N): " autostart_input
+autostart_enabled=false
+if [ "${autostart_input^^}" = "Y" ]; then
+    autostart_enabled=true
+    echo "Installing systemd service..."
+    sudo tee /etc/systemd/system/piDisplay.service > /dev/null << EOF
+[Unit]
+Description=Bitcoin Node Display (piDisplay)
+After=graphical.target
+Wants=graphical.target
+
+[Service]
+Type=simple
+User=$USER
+Environment=DISPLAY=:0.0
+Environment=XAUTHORITY=/home/$USER/.Xauthority
+WorkingDirectory=$project_file_path
+ExecStart=$project_file_path/bitcoin_env/bin/python3 $project_file_path/$program_name
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical.target
+EOF
+    sudo systemctl daemon-reload
+    sudo systemctl enable piDisplay.service
+    echo "Service installed and enabled. It will start automatically on the next boot."
+    echo "Check status any time with: sudo systemctl status piDisplay.service"
+    echo "Tail logs with: journalctl -u piDisplay.service -f"
+    echo "Disable auto-start with: sudo systemctl disable --now piDisplay.service"
+fi
+
 echo "You will need to update the config file with your RPC node connection as well as the desired update intervals..."
 read -p "Would you like to do that now? (Y/N): " user_input
 if [ "${user_input^^}" = "Y" ]; then
@@ -68,13 +103,18 @@ for i in {1..3}; do # Sleep for 3 seconds.
     sleep 1 # echo three . to create space
 done
 echo "Installation complete!"
-cd /home/$USER/Desktop/
 echo "Launching APP!"
 
 for i in {1..3}; do # Sleep for 3 seconds.
     echo "."
     sleep 1 # echo three . to create space
 done
-nohup "./Run Display.sh" > "$project_file_path/nohup.log" 2>&1 & # Launch app with nohup so you can close the terminal. The app's own log (bitcoin_display.log) is written by piDisplay.py into the repo directory.
+
+if [ "$autostart_enabled" = true ]; then
+    sudo systemctl start piDisplay.service # Launch via the service instead of nohup so there's only ever one instance running.
+else
+    cd /home/$USER/Desktop/
+    nohup "./Run Display.sh" > "$project_file_path/nohup.log" 2>&1 & # Launch app with nohup so you can close the terminal. The app's own log (bitcoin_display.log) is written by piDisplay.py into the repo directory.
+fi
 
 echo "########################################################################"
