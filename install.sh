@@ -95,8 +95,8 @@ if [ "${user_input^^}" = "Y" ]; then
     echo "<NAME> is whatever profile name you'll use for 'connect_to' in config.json (e.g. RPC_NUC1_USER for connect_to \"NUC1\")."
     echo "This file is gitignored, so it's safe to put real credentials here — never put them in config.json."
     echo "Use CTRL+x to save your updates."
-    echo "Opening in 10 seconds..."
-    sleep 10
+    
+    sleep 2
     nano .env # Open the env file for editing
 
     echo "########################################################################"
@@ -104,7 +104,7 @@ if [ "${user_input^^}" = "Y" ]; then
     echo "'update_intervals' should be updated with SECONDS between refreshes. Example: 60 = refresh every 60 seconds."
     echo "Use CTRL+x to save your updates."
     echo "Opening in 5 seconds..."
-    sleep 5
+    sleep 2
     nano config.json # Open the config file for editing
 fi
 

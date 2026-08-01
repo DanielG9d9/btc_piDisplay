@@ -57,6 +57,10 @@ Recommended node software:
 1. Parmanode - https://parmanode.com/install/ (Install it on RaspiPi OS not Linux)
 2. RaspiBlitz - https://github.com/raspiblitz/raspiblitz
 
+Recommended node hardware:
+1. Raspberry Pi 3+ - I used a 4B in my development but resource wise this shouldn't be too demanding.
+2. Hosyond 5 Inch Touchscreen - https://www.amazon.com/dp/B0CXTFN8K9?ref_=ppx_hzsearch_conn_dt_b_fed_asin_title_4
+
 ## Ready pi
 Follow these steps if you're trying to run a new Pi Display. You can copy / paste directly into the terminal.
 1. Download the Pi imager from [here](https://www.raspberrypi.com/software/).
