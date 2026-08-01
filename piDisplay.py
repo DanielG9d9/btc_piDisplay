@@ -4,13 +4,11 @@ from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from bitcoinrpc.authproxy import AuthServiceProxy
 from matplotlib.collections import LineCollection
-from matplotlib.offsetbox import AnchoredText
 from datetime import datetime, timedelta
 import matplotlib.ticker as mticker
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 from dotenv import load_dotenv
-from datetime import datetime
 from tkinter import ttk
 import tkinter as tk
 import numpy as np
@@ -134,13 +132,7 @@ last_blockchain_update = 0 # Variable for tracking when to update blockchain inf
 fig = None # Creating global fig
 canvas = None # Creating global canvas
 previous_chain, previous_network, previous_fees = None, None, None
-blockchain_chain = ""
-blockchain_blocks = ""
-blockchain_verification_progress = ""
-node_connections = ""
-cpu_temp = ""
 ax = None
-saved_timestamp = ""
 global root
 root = None
 app_running = True
@@ -1718,25 +1710,13 @@ def update_node_table(blockchain_data, network_data, fees):
     # Format blocks and headers with thousands separators (e.g. 960,015)
     blockchain_blocks = f"{blockchain_data['blocks']:,}/{blockchain_data['headers']:,}"
     blockchain_verification_progress = f"{blockchain_data['verificationprogress'] * 100:.2f}%"
-    #TODO: 
-    # node_connections = f"{network_data['connections']}"
-    #TODO: 
-    # node_subversion = f"{network_data['subversion']}"
-    #TODO: 
-    # node_connections_in, node_connections_out = f"{network_data['connections_in']}", f"{network_data['connections_out']}"
-                
+
     # Difficulty formatting
     difficulty = blockchain_data['difficulty']
     formatted_difficulty = format_difficulty(difficulty)
-    
-    if connect_to == 'raspiblitz': # This does nothing, can be changed when running on desktop as you can't fetch the cpu temp with this...
-        # Do nothing
-        # print("Changed this cuz I'm on Pi.")
-        cpu_temp = get_cpu_temp()
-    else:
-        cpu_temp = get_cpu_temp()
-    # Get fee estimates
-    
+
+    cpu_temp = get_cpu_temp()
+
     # Create or update the legend here
     if ax is not None:  # Ensure ax is defined
         if str(blockchain_verification_progress) == '100.00%':
@@ -1814,7 +1794,7 @@ def update_node_table(blockchain_data, network_data, fees):
     return  
 
 def update_blockchain_info(force_update=False):
-    global app_running, root, last_blockchain_update, blockchain_chain, blockchain_blocks, blockchain_verification_progress, node_connections, cpu_temp, previous_chain, previous_network, previous_fees, saved_timestamp, blockchain_timer_id
+    global app_running, root, last_blockchain_update, previous_chain, previous_network, previous_fees, blockchain_timer_id
     if not app_running:
         return  # Don't do anything if the app is not running
     current_time = time.time()
@@ -1823,7 +1803,6 @@ def update_blockchain_info(force_update=False):
 
     try: # Let's update info
         new_chain_info, new_network_info, fees = get_node_info(rpc_connection)
-        saved_timestamp = get_timestamp()
         # If successful go to bottom to call update_node_table function
         update_node_table(new_chain_info, new_network_info, fees) # Call the update function if we're able to connect
         # Store previous values
