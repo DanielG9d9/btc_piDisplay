@@ -422,7 +422,13 @@ def restart_chart_alternation():
     """(Re)start the auto-alternation timer per the current
     chart_alternating/chart_alternating_interval settings. Cancels any
     existing timer first, so it's safe to call whenever either setting
-    changes, or once at startup to pick up what was loaded from config."""
+    changes, or once at startup to pick up what was loaded from config.
+
+    Schedules against the same hour-aligned grid as the price countdown
+    (time_until_next_aligned_update) rather than a plain relative delay, so
+    alternation ticks land on round wall-clock boundaries (e.g. :25, :20,
+    :15 before a 30-minute price update) instead of drifting to whatever
+    second the app happened to start or the setting was last changed."""
     global chart_alternation_timer_id
 
     if chart_alternation_timer_id is not None:
@@ -433,8 +439,9 @@ def restart_chart_alternation():
         chart_alternation_timer_id = None
 
     if chart_alternating == "on" and root is not None and app_running:
+        delay_seconds = time_until_next_aligned_update(chart_alternating_interval_seconds)
         chart_alternation_timer_id = root.after(
-            chart_alternating_interval_seconds * 1000, alternate_chart
+            int(delay_seconds * 1000), alternate_chart
         )
 
 def alternate_chart():
@@ -445,8 +452,9 @@ def alternate_chart():
     global chart_alternation_timer_id
     if app_running and chart_alternating == "on":
         toggle_chart_mode()
+        delay_seconds = time_until_next_aligned_update(chart_alternating_interval_seconds)
         chart_alternation_timer_id = root.after(
-            chart_alternating_interval_seconds * 1000, alternate_chart
+            int(delay_seconds * 1000), alternate_chart
         )
     else:
         chart_alternation_timer_id = None
