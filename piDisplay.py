@@ -1267,11 +1267,11 @@ def _draw_stat_tile(fig, grid_cell, label, big_text, unit_text, sub_text, value_
     tile_ax.set_xlim(0, 1)
     tile_ax.set_ylim(0, 1)
 
-    tile_ax.text(0.5, 0.88, label, transform=tile_ax.transAxes,
+    tile_ax.text(0.5, 0.80, label, transform=tile_ax.transAxes,
                  ha='center', va='top', fontsize=13 * scale, fontweight='bold', color=PALETTE['accent'])
 
     big_color = value_color or PALETTE['primary']
-    big = tile_ax.text(0.0, 0.48, big_text, transform=tile_ax.transAxes,
+    big = tile_ax.text(0.0, 0.38, big_text, transform=tile_ax.transAxes,
                         ha='left', va='center', fontsize=24 * scale, fontweight='bold', color=big_color)
 
     unit = None
@@ -1279,7 +1279,7 @@ def _draw_stat_tile(fig, grid_cell, label, big_text, unit_text, sub_text, value_
         fig.canvas.draw()
         bbox = big.get_window_extent(renderer=fig.canvas.get_renderer())
         x_end = tile_ax.transAxes.inverted().transform((bbox.x1, 0))[0]
-        unit = tile_ax.text(x_end + 0.03, 0.44, unit_text, transform=tile_ax.transAxes,
+        unit = tile_ax.text(x_end + 0.03, 0.34, unit_text, transform=tile_ax.transAxes,
                      ha='left', va='center', fontsize=12 * scale, color=PALETTE['secondary'])
 
     # Re-center the value (+ unit, if present) as one group now that its
@@ -1298,7 +1298,7 @@ def _draw_stat_tile(fig, grid_cell, label, big_text, unit_text, sub_text, value_
         sub_texts = []
         x = 0.0
         for part_text, part_color in parts:
-            t = tile_ax.text(x, 0.06, part_text, transform=tile_ax.transAxes,
+            t = tile_ax.text(x, 0.02, part_text, transform=tile_ax.transAxes,
                               ha='left', va='bottom', fontsize=10 * scale, color=part_color)
             fig.canvas.draw()
             bbox = t.get_window_extent(renderer=fig.canvas.get_renderer())
@@ -1318,8 +1318,8 @@ def render_mining_dashboard(blockchain_data, difficulty_adj, hashrate_data):
     fig.patch.set_facecolor(PALETTE['page'])
     scale = _dashboard_scale(fig)
 
-    gs = fig.add_gridspec(2, 3, height_ratios=[1, 3.2], hspace=0.7, wspace=0.3,
-                           top=0.93, bottom=0.13, left=0.11, right=0.92)
+    gs = fig.add_gridspec(2, 3, height_ratios=[1.5, 3.2], hspace=0.7, wspace=0.3,
+                           top=0.88, bottom=0.13, left=0.11, right=0.92)
 
     remaining_blocks = difficulty_adj.get('remainingBlocks', 0)
     remaining_days = difficulty_adj.get('remainingTime', 0) / 1000 / 86400
