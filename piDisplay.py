@@ -739,6 +739,11 @@ def update_more_metrics():
     more_ax.set_facecolor(PALETTE['surface'])
     more_fig.patch.set_facecolor(PALETTE['page'])
     more_ax.axis('off')
+    # Settled before any of the below measures label/QR sizes against it —
+    # tight_layout() shrinks the axis('off') subplot's margins substantially
+    # (it starts with the default rcParams margins despite having no visible
+    # ticks/labels), so anything measured beforehand is off by that shrink.
+    more_fig.tight_layout()
 
     # Fetch data
     if testing:
@@ -856,9 +861,14 @@ def update_more_metrics():
         more_canvas.draw()
         renderer = more_fig.canvas.get_renderer()
         to_frac_x = lambda px: more_ax.transAxes.inverted().transform((px, 0))[0]
-        box_right_frac = to_frac_x(anchored_box.get_window_extent(renderer).x1)
+        to_frac_y = lambda py: more_ax.transAxes.inverted().transform((0, py))[1]
+        box_bbox = anchored_box.get_window_extent(renderer)
+        box_right_frac = to_frac_x(box_bbox.x1)
+        box_top_frac = to_frac_y(box_bbox.y1)
+        box_center_y_frac = to_frac_y((box_bbox.y0 + box_bbox.y1) / 2)
         qr_bbox = anchored_qr.get_window_extent(renderer)
         qr_width_frac = to_frac_x(qr_bbox.x1) - to_frac_x(qr_bbox.x0)
+        qr_height_frac = to_frac_y(qr_bbox.y1) - to_frac_y(qr_bbox.y0)
 
         margin = 0.02
         gap_left = box_right_frac + margin
@@ -867,9 +877,12 @@ def update_more_metrics():
         # Center within the gap when the QR fits; otherwise anchor it flush
         # against the metrics box rather than letting it overlap that box.
         qr_left = gap_left + max(0.0, gap - qr_width_frac) / 2
-        anchored_qr.set_bbox_to_anchor((qr_left + qr_width_frac, 0.86), transform=more_ax.transAxes)
+        # Vertically centered on the metrics box itself, not the top of it —
+        # clamped so a QR taller than the box (e.g. an error state with fewer
+        # rows) still can't push above the box's own top into the heading.
+        qr_top = min(box_center_y_frac + qr_height_frac / 2, box_top_frac)
+        anchored_qr.set_bbox_to_anchor((qr_left + qr_width_frac, qr_top), transform=more_ax.transAxes)
 
-    more_fig.tight_layout()
     more_canvas.draw()
 
 def proper_exit():
