@@ -124,11 +124,8 @@ if [ -n "$wallet_address_input" ]; then
     fi
     echo "Saved. The QR code will appear on the Node screen."
 else
-    # Blank out .env.example's sample WALLET_ADDRESS (if present) so nothing
-    # is shown unless you actually entered an address of your own.
-    if grep -q '^WALLET_ADDRESS=' .env; then
-        sed -i "s|^WALLET_ADDRESS=.*|WALLET_ADDRESS=|" .env
-    fi
+    # Leave .env's WALLET_ADDRESS untouched — for a fresh install that's
+    # .env.example's seeded developer default, so the QR still shows.
     echo "Skipped — Developer's default QR code will be shown. Add WALLET_ADDRESS to .env any time to display your own address!"
 fi
 echo "########################################################################"
