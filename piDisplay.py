@@ -870,13 +870,24 @@ def update_more_metrics():
         qr_width_frac = to_frac_x(qr_bbox.x1) - to_frac_x(qr_bbox.x0)
         qr_height_frac = to_frac_y(qr_bbox.y1) - to_frac_y(qr_bbox.y0)
 
+        # Horizontally aligned with the Mining/Price toggle button in the
+        # toolbar above — the "leftover space next to the metrics box"
+        # doesn't have a clean axes-fraction definition (the toolbar lives in
+        # a separate Tk widget overlaid on top of this figure, not inside
+        # more_ax), so anchoring to a fixed screen landmark reads better than
+        # centering in a gap that undershoots what looks like free space.
+        root.update_idletasks()
+        canvas_left_px = more_canvas.get_tk_widget().winfo_rootx()
+        button_center_px = mining_button.winfo_rootx() + mining_button.winfo_width() / 2
+        qr_center_x = to_frac_x(button_center_px - canvas_left_px)
+
         margin = 0.02
         gap_left = box_right_frac + margin
         gap_right = 1.0 - margin
-        gap = max(0.0, gap_right - gap_left)
-        # Center within the gap when the QR fits; otherwise anchor it flush
-        # against the metrics box rather than letting it overlap that box.
-        qr_left = gap_left + max(0.0, gap - qr_width_frac) / 2
+        # Keep it clear of the metrics box and the screen edge even if the
+        # button ends up somewhere that would otherwise push it into either —
+        # box takes priority over the edge if the QR is too wide for both.
+        qr_left = max(min(qr_center_x - qr_width_frac / 2, gap_right - qr_width_frac), gap_left)
         # Vertically centered on the metrics box itself, not the top of it —
         # clamped so a QR taller than the box (e.g. an error state with fewer
         # rows) still can't push above the box's own top into the heading.
