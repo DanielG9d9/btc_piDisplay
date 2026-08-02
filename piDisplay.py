@@ -830,14 +830,6 @@ def update_more_metrics():
     # Receive QR, next to the metrics box — skipped entirely when no
     # WALLET_ADDRESS is configured (or, outside --testing, when fetching it failed).
     if qr_address:
-        # Center the QR in the leftover space to the right of the metrics box
-        # rather than pinning it to the axes edge, so it isn't tight against
-        # the screen edge when the box is narrow.
-        more_canvas.draw()
-        box_right_frac = more_ax.transAxes.inverted().transform(
-            (anchored_box.get_window_extent(more_fig.canvas.get_renderer()).x1, 0))[0]
-        qr_center_x = (box_right_frac + 1.0) / 2
-
         qr_label = TextArea("Receive", textprops=dict(color=PALETTE['secondary'], fontsize=12, fontweight='bold'))
         qr_array = get_wallet_qr_array(qr_address)
         # Target a fixed on-screen width regardless of the QR's native pixel
@@ -848,13 +840,34 @@ def update_more_metrics():
         if qr_address == DEFAULT_WALLET_ADDRESS:
             qr_children.append(TextArea("Buy me a coffee ☕", textprops=dict(color=PALETTE['bitcoin_orange'], fontsize=11, fontweight='bold')))
         qr_content = VPacker(children=qr_children, align="center", pad=0, sep=4)
-        anchored_qr = AnchoredOffsetbox(loc='upper center', child=qr_content, pad=0.8, frameon=True,
-                                         bbox_to_anchor=(qr_center_x, 0.86), bbox_transform=more_ax.transAxes, borderpad=0)
+
+        # Placed flush right first, purely so its rendered width can be
+        # measured below — repositioned afterward to center it in the space
+        # actually left over next to the metrics box (which varies in width
+        # with its content), without letting it overlap that box.
+        anchored_qr = AnchoredOffsetbox(loc='upper right', child=qr_content, pad=0.8, frameon=True,
+                                         bbox_to_anchor=(0.98, 0.86), bbox_transform=more_ax.transAxes, borderpad=0)
         anchored_qr.patch.set_boxstyle("round,pad=0.6")
         anchored_qr.patch.set_facecolor(PALETTE['page'])
         anchored_qr.patch.set_edgecolor(PALETTE['baseline'])
         anchored_qr.patch.set_alpha(0.9)
         more_ax.add_artist(anchored_qr)
+
+        more_canvas.draw()
+        renderer = more_fig.canvas.get_renderer()
+        to_frac_x = lambda px: more_ax.transAxes.inverted().transform((px, 0))[0]
+        box_right_frac = to_frac_x(anchored_box.get_window_extent(renderer).x1)
+        qr_bbox = anchored_qr.get_window_extent(renderer)
+        qr_width_frac = to_frac_x(qr_bbox.x1) - to_frac_x(qr_bbox.x0)
+
+        margin = 0.02
+        gap_left = box_right_frac + margin
+        gap_right = 1.0 - margin
+        gap = max(0.0, gap_right - gap_left)
+        # Center within the gap when the QR fits; otherwise anchor it flush
+        # against the metrics box rather than letting it overlap that box.
+        qr_left = gap_left + max(0.0, gap - qr_width_frac) / 2
+        anchored_qr.set_bbox_to_anchor((qr_left + qr_width_frac, 0.86), transform=more_ax.transAxes)
 
     more_fig.tight_layout()
     more_canvas.draw()
