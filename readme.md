@@ -113,19 +113,32 @@ Follow these steps to install and set up the project:
 1. Navigate to where the repository will live.
     ```bash
     cd /home/$USER/Documents # No need to replace $USER with your user profile name.
+    ```
 
 2. Clone the repository: 
     - I have used /home/$USER/Documents as my repository directory.
     ```bash
     git clone https://github.com/DanielG9d9/btc_piDisplay.git # This will clone the repository to the directory you run the command from.
+    ```
 
 3. Navigate to the repository folder you just created:
     - If you are not starting from the line above you may need to 'cd' from root `cd /home/$USER/Documents/btc_piDisplay # No need to replace $USER with your user profile name.`
     ```bash
     cd btc_piDisplay/
+    ```
 4. Run the install.sh file.
     ```bash
     ./install.sh # Run the script file to install dependencies.  
+    ```
+
+Run it all!
+```bash
+cd /home/$USER/Documents # No need to replace $USER with your user profile name.
+git clone https://github.com/DanielG9d9/btc_piDisplay.git # This will clone the repository to the directory you run the command from.
+cd btc_piDisplay/
+./install.sh # Run the script file to install dependencies.  
+```
+
 ### Setting up your RPC connection
 
 RPC credentials live in `.env`, not `config.json` — `config.json` is committed to git, `.env` is gitignored, so this keeps your node's username/password out of version control.
@@ -176,12 +189,16 @@ You can also start the display remotely from your terminal via ssh!
 1. Navigate to your repository folder
     ```bash
     cd /home/$USER/Documents/btc_piDisplay # Navigate to your saved directory.
+    ```
 2. Open the virtual environment.
     ```bash
     source bitcoin_env/bin/activate # Launch the bitcoin_env virtual environment.
+    ```
 3. Run the script from the virtual environment.  
     ```bash
     nohup "/.Run Display.sh" > "$(pwd)/nohup.log" 2>&1 & # Use nohup to ensure the script does not stop when you close the terminal.
+    ```
+
 ## Debug & Testing
 If you encounter errors an output log should be created at the location specified in the config file. By default it is set as `"log_file": "bitcoin_display.log"`, a relative path resolved against the repository directory, so the log always lands next to `piDisplay.py` regardless of your current working directory when the app is launched.
 
