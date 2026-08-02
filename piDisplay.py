@@ -858,7 +858,12 @@ def update_more_metrics():
         anchored_qr.patch.set_alpha(0.9)
         more_ax.add_artist(anchored_qr)
 
-        more_canvas.draw()
+        # Measured via get_renderer() alone, not draw() — draw() actually
+        # paints to the screen on this Tk backend, and calling it here (at
+        # the QR's placeholder position, before it's repositioned below)
+        # was flashing that wrong position for a frame before the corrected
+        # one landed. get_renderer() lazily builds an Agg renderer from just
+        # the figure's size/dpi, which is all get_window_extent() needs.
         renderer = more_fig.canvas.get_renderer()
         to_frac_x = lambda px: more_ax.transAxes.inverted().transform((px, 0))[0]
         to_frac_y = lambda py: more_ax.transAxes.inverted().transform((0, py))[1]
