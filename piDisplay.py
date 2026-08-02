@@ -739,6 +739,7 @@ def update_more_metrics():
     more_ax.set_facecolor(PALETTE['surface'])
     more_fig.patch.set_facecolor(PALETTE['page'])
     more_ax.axis('off')
+    scale = _display_scale(more_fig)
 
     # Fetch data
     if testing:
@@ -786,10 +787,10 @@ def update_more_metrics():
     usd_value = address_balance * current_price if address_balance is not None else None
 
     def label(text):
-        return TextArea(text, textprops=dict(color=PALETTE['secondary'], fontsize=13))
+        return TextArea(text, textprops=dict(color=PALETTE['secondary'], fontsize=13 * scale))
 
     def value(text, color=None):
-        return TextArea(text, textprops=dict(color=color or PALETTE['primary'], fontsize=13, fontweight='bold'))
+        return TextArea(text, textprops=dict(color=color or PALETTE['primary'], fontsize=13 * scale, fontweight='bold'))
 
     rows = [
         HPacker(children=[label("Last Update:"), value(last_update)], align="left", pad=0, sep=6),
@@ -809,7 +810,7 @@ def update_more_metrics():
                                        value(f"{address_balance:.3f} BTC (${usd_value:,.0f})", PALETTE['accent'])],
                              align="left", pad=0, sep=6))
     box = VPacker(children=rows, align="left", pad=0, sep=8)
-    heading = TextArea("NODE METRICS", textprops=dict(color=PALETTE['primary'], fontsize=18, fontweight='bold'))
+    heading = TextArea("NODE METRICS", textprops=dict(color=PALETTE['primary'], fontsize=18 * scale, fontweight='bold'))
 
     for child in more_ax.get_children():
         if isinstance(child, AnchoredOffsetbox):
@@ -830,15 +831,17 @@ def update_more_metrics():
     # Receive QR, next to the metrics box — skipped entirely when no
     # WALLET_ADDRESS is configured (or, outside --testing, when fetching it failed).
     if qr_address:
-        qr_label = TextArea("Receive", textprops=dict(color=PALETTE['secondary'], fontsize=12, fontweight='bold'))
+        qr_label = TextArea("Receive", textprops=dict(color=PALETTE['secondary'], fontsize=12 * scale, fontweight='bold'))
         qr_array = get_wallet_qr_array(qr_address)
         # Target a fixed on-screen width regardless of the QR's native pixel
         # size, which varies with address length / matplotlib's chosen version.
-        qr_zoom = 150 / qr_array.shape[1]
+        # Scaled like the surrounding text so the QR stays proportionate to
+        # the rest of the screen across different panel resolutions.
+        qr_zoom = (150 * scale) / qr_array.shape[1]
         qr_image = OffsetImage(qr_array, zoom=qr_zoom)
         qr_children = [qr_label, qr_image]
         if qr_address == DEFAULT_WALLET_ADDRESS:
-            qr_children.append(TextArea("Buy me a coffee ☕", textprops=dict(color=PALETTE['bitcoin_orange'], fontsize=11, fontweight='bold')))
+            qr_children.append(TextArea("Buy me a coffee ☕", textprops=dict(color=PALETTE['bitcoin_orange'], fontsize=11 * scale, fontweight='bold')))
         qr_content = VPacker(children=qr_children, align="center", pad=0, sep=4)
         anchored_qr = AnchoredOffsetbox(loc='upper right', child=qr_content, pad=0.8, frameon=True,
                                          bbox_to_anchor=(0.98, 0.98), bbox_transform=more_ax.transAxes, borderpad=0)
@@ -1329,6 +1332,7 @@ def render_price_chart(current_price, daily_change, prices):
     ax.set_facecolor(PALETTE['surface'])
     fig.patch.set_facecolor(PALETTE['page'])
     fig.subplots_adjust(left=0.08, right=0.99, top=0.90, bottom=0.15)
+    scale = _display_scale(fig)
 
     dates = [datetime.fromtimestamp(price[0] / 1000) for price in prices]
     values = [price[1] for price in prices]
@@ -1363,8 +1367,8 @@ def render_price_chart(current_price, daily_change, prices):
         ax.spines[side].set_color(PALETTE['baseline'])
         ax.spines[side].set_linewidth(0.8)
 
-    ax.tick_params(axis='x', colors=PALETTE['muted'])
-    ax.tick_params(axis='y', colors=PALETTE['muted'])
+    ax.tick_params(axis='x', colors=PALETTE['muted'], labelsize=10 * scale)
+    ax.tick_params(axis='y', colors=PALETTE['muted'], labelsize=10 * scale)
 
     if time_series.lower() == "standard":
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%-I:%M %p'))
@@ -1372,7 +1376,7 @@ def render_price_chart(current_price, daily_change, prices):
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'${x:,.0f}'))
 
-    ax.set_title(f"฿itcoin  ${current_price:,.0f}", loc='left', fontsize=18,
+    ax.set_title(f"฿itcoin  ${current_price:,.0f}", loc='left', fontsize=18 * scale,
                  fontweight='bold', color=PALETTE['primary'], pad=14)
 
     if daily_change is not None:
@@ -1384,7 +1388,7 @@ def render_price_chart(current_price, daily_change, prices):
             badge_text, badge_color = f"-{abs(daily_change)}%", PALETTE['critical']
         ax.text(
             0.98, 0.94, badge_text, transform=ax.transAxes,
-            ha='right', va='top', fontsize=12, fontweight='bold', color=PALETTE['primary'],
+            ha='right', va='top', fontsize=12 * scale, fontweight='bold', color=PALETTE['primary'],
             bbox=dict(boxstyle='round,pad=0.35', facecolor=badge_color, edgecolor='none'),
             zorder=4
         )
@@ -1396,14 +1400,19 @@ def render_price_chart(current_price, daily_change, prices):
     fig.tight_layout(pad=0.5, h_pad=0.8, w_pad=0.5)
     canvas.draw()
 
-def _dashboard_scale(fig):
-    """Font-scale factor for the mining dashboard, relative to this app's
-    desktop baseline figure size (10x4 in). The figure is resized by Tk to
-    match whatever window/screen it's actually drawn in, but matplotlib
-    fontsizes are absolute points — without this, text sized for the
-    desktop crowds or overflows the much smaller canvas a constrained Pi
-    display renders into. Clamped so a tiny screen doesn't shrink text to
-    unreadable, and a larger-than-baseline window doesn't balloon it."""
+def _display_scale(fig):
+    """Font-scale factor for any matplotlib-rendered screen (main chart, node
+    info overlay, mining dashboard, Node/More metrics screen), relative to
+    this app's desktop baseline figure size (10x4 in). The figure is resized
+    by Tk to match whatever window/screen it's actually drawn in — on the Pi
+    that means the exact panel resolution (create_display/show_more_screen
+    derive figsize straight from winfo_screenwidth/height) — but matplotlib
+    fontsizes are absolute points. Without this, text sized for the desktop
+    baseline would render disproportionately small on a higher-resolution
+    panel (e.g. a 7" screen at 1024x600 vs. a 5" screen at 800x480) even
+    though both are rendered fullscreen. Clamped so a tiny screen doesn't
+    shrink text to unreadable, and a larger-than-baseline window doesn't
+    balloon it."""
     base_w, base_h = 10.0, 4.0
     fig_w, fig_h = fig.get_size_inches()
     scale = min(fig_w / base_w, fig_h / base_h)
@@ -1418,7 +1427,7 @@ def _draw_stat_tile(fig, grid_cell, label, big_text, unit_text, sub_text, value_
     desktop). sub_text may be a plain string (rendered in the muted color) or
     a list of (text, color) segments for mixed-color subtext, e.g. a colored
     +/-% figure inline with muted surrounding words. scale comes from
-    _dashboard_scale() and keeps these fixed-point fontsizes proportionate
+    _display_scale() and keeps these fixed-point fontsizes proportionate
     to the actual rendered figure size."""
     tile_ax = fig.add_subplot(grid_cell)
     tile_ax.axis('off')
@@ -1474,7 +1483,7 @@ def render_mining_dashboard(blockchain_data, difficulty_adj, hashrate_data):
     global fig, canvas, ax
     fig.clear()
     fig.patch.set_facecolor(PALETTE['page'])
-    scale = _dashboard_scale(fig)
+    scale = _display_scale(fig)
 
     gs = fig.add_gridspec(2, 3, height_ratios=[1.5, 3.2], hspace=0.7, wspace=0.3,
                            top=0.88, bottom=0.13, left=0.11, right=0.92)
@@ -1782,20 +1791,22 @@ def update_node_table(blockchain_data, network_data, fees):
 
     # Create or update the legend here
     if ax is not None:  # Ensure ax is defined
+        scale = _display_scale(fig)
+        fs = 12 * scale
         if str(blockchain_verification_progress) == '100.00%':
             sync_text = 'OK'
             sync_color = 'green'
         else:
             sync_text = 'Sync In Progress'
             sync_color = 'orange'
-        
+
         # Create text areas for each piece of information
-        deviceName = TextArea(f"{connect_to}: ", textprops=dict(color='white', fontsize=12))
-        chainName  = TextArea(f"{blockchain_chain}net", textprops=dict(color='cyan', fontsize=12))
-        cpuTempName= TextArea(f"CPU Temp: ", textprops=dict(color='white', fontsize=12))
-      
+        deviceName = TextArea(f"{connect_to}: ", textprops=dict(color='white', fontsize=fs))
+        chainName  = TextArea(f"{blockchain_chain}net", textprops=dict(color='cyan', fontsize=fs))
+        cpuTempName= TextArea(f"CPU Temp: ", textprops=dict(color='white', fontsize=fs))
+
         if cpu_temp is None:
-            cpuTempNumber = TextArea("N/A", textprops=dict(color='yellow', fontsize=12))
+            cpuTempNumber = TextArea("N/A", textprops=dict(color='yellow', fontsize=fs))
         else:
             degree_symbol = "\u00B0"
             if cpu_temp >= 85:
@@ -1804,21 +1815,21 @@ def update_node_table(blockchain_data, network_data, fees):
                 color = 'yellow'
             else:
                 color = 'green'
-            cpuTempNumber = TextArea(f"{cpu_temp}{degree_symbol}C", textprops=dict(color=color, fontsize=12))
-    
-        blocksName = TextArea("Blocks: ", textprops=dict(color='white', fontsize=12))
-        blocksNumber = TextArea(f"{blockchain_blocks}", textprops=dict(color='yellow', fontsize=12))
-        syncStatus = TextArea(f"{sync_text}", textprops=dict(color=sync_color, fontsize=12))
-        verificationProgress = TextArea(f"{blockchain_verification_progress}", textprops=dict(color=sync_color, fontsize=12))
-        difficultyName = TextArea(f"Difficulty: ", textprops=dict(color='white', fontsize=12))
-        difficultyNumber = TextArea(f"{formatted_difficulty}", textprops=dict(color='yellow', fontsize=12))
+            cpuTempNumber = TextArea(f"{cpu_temp}{degree_symbol}C", textprops=dict(color=color, fontsize=fs))
+
+        blocksName = TextArea("Blocks: ", textprops=dict(color='white', fontsize=fs))
+        blocksNumber = TextArea(f"{blockchain_blocks}", textprops=dict(color='yellow', fontsize=fs))
+        syncStatus = TextArea(f"{sync_text}", textprops=dict(color=sync_color, fontsize=fs))
+        verificationProgress = TextArea(f"{blockchain_verification_progress}", textprops=dict(color=sync_color, fontsize=fs))
+        difficultyName = TextArea(f"Difficulty: ", textprops=dict(color='white', fontsize=fs))
+        difficultyNumber = TextArea(f"{formatted_difficulty}", textprops=dict(color='yellow', fontsize=fs))
         low_fee, medium_fee, high_fee = fees if fees else (None, None, None)
         if low_fee and medium_fee and high_fee:
-            feeText = TextArea("Fees (sat/vB): ", textprops=dict(color='white', fontsize=12))
-            feeNumbers = TextArea(f"L:{low_fee:,} M:{medium_fee:,} H:{high_fee:,}", textprops=dict(color='yellow', fontsize=12))
+            feeText = TextArea("Fees (sat/vB): ", textprops=dict(color='white', fontsize=fs))
+            feeNumbers = TextArea(f"L:{low_fee:,} M:{medium_fee:,} H:{high_fee:,}", textprops=dict(color='yellow', fontsize=fs))
         else:
-            feeText = TextArea("Blockchain sync in progress", textprops=dict(color='orange', fontsize=12))
-            feeNumbers = TextArea("", textprops=dict(color='yellow', fontsize=12))
+            feeText = TextArea("Blockchain sync in progress", textprops=dict(color='orange', fontsize=fs))
+            feeNumbers = TextArea("", textprops=dict(color='yellow', fontsize=fs))
         # TODO: Add connections in and out!
         
         # Arrange text areas horizontally and vertically
