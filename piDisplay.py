@@ -830,6 +830,14 @@ def update_more_metrics():
     # Receive QR, next to the metrics box — skipped entirely when no
     # WALLET_ADDRESS is configured (or, outside --testing, when fetching it failed).
     if qr_address:
+        # Center the QR in the leftover space to the right of the metrics box
+        # rather than pinning it to the axes edge, so it isn't tight against
+        # the screen edge when the box is narrow.
+        more_canvas.draw()
+        box_right_frac = more_ax.transAxes.inverted().transform(
+            (anchored_box.get_window_extent(more_fig.canvas.get_renderer()).x1, 0))[0]
+        qr_center_x = (box_right_frac + 1.0) / 2
+
         qr_label = TextArea("Receive", textprops=dict(color=PALETTE['secondary'], fontsize=12, fontweight='bold'))
         qr_array = get_wallet_qr_array(qr_address)
         # Target a fixed on-screen width regardless of the QR's native pixel
@@ -840,8 +848,8 @@ def update_more_metrics():
         if qr_address == DEFAULT_WALLET_ADDRESS:
             qr_children.append(TextArea("Buy me a coffee ☕", textprops=dict(color=PALETTE['bitcoin_orange'], fontsize=11, fontweight='bold')))
         qr_content = VPacker(children=qr_children, align="center", pad=0, sep=4)
-        anchored_qr = AnchoredOffsetbox(loc='upper right', child=qr_content, pad=0.8, frameon=True,
-                                         bbox_to_anchor=(0.98, 0.98), bbox_transform=more_ax.transAxes, borderpad=0)
+        anchored_qr = AnchoredOffsetbox(loc='upper center', child=qr_content, pad=0.8, frameon=True,
+                                         bbox_to_anchor=(qr_center_x, 0.86), bbox_transform=more_ax.transAxes, borderpad=0)
         anchored_qr.patch.set_boxstyle("round,pad=0.6")
         anchored_qr.patch.set_facecolor(PALETTE['page'])
         anchored_qr.patch.set_edgecolor(PALETTE['baseline'])
