@@ -75,39 +75,6 @@ Follow these steps if you're trying to run a new Pi Display. You can copy / past
 6. Confirm settings and write to the SD card.
 7. Boot the Pi with the SD card and ensure you have WiFi.
 
-### Optional: Auto-Clone & Install On First Boot
-If you'd rather not type the `git clone`/`install.sh` commands over SSH at all, you can have the Pi do it itself the very first time it boots — no custom OS image required.
-
-Imager applies the "Customisation" settings from step 5 (hostname, user account, WiFi, SSH) via a declarative file called `custom.toml`, written to the boot partition. `custom.toml` only knows how to apply those specific settings — it has no hook for running arbitrary shell commands, and there is no `firstrun.sh` on the card by default. To get the auto-clone-on-first-boot behavior, you need to create your own `firstrun.sh` and wire it up via `cmdline.txt`, using the kernel's generic `systemd.run=` first-boot mechanism:
-
-1. After Imager finishes writing the card, re-insert it into your computer (or leave it mounted) and open the boot partition — it'll be named `bootfs` or `boot`.
-2. Create a new file at the root of that partition named `firstrun.sh` containing (replacing `pi` with whichever username you set in step 5 (You need to do this on line 2,4, & 7)):
-    ```bash
-    #!/bin/bash
-    su - pi -c '
-        DEBIAN_FRONTEND=noninteractive sudo apt-get update
-        DEBIAN_FRONTEND=noninteractive sudo apt-get install -y git
-        cd /home/pi
-        git clone https://github.com/DanielG9d9/btc_piDisplay.git
-        cd btc_piDisplay
-        printf "Y\nN\n" | ./install.sh > /home/pi/btc_piDisplay/first_boot_install.log 2>&1
-    '
-    rm -f /boot/firmware/firstrun.sh
-    sed -i 's| systemd.run.*||' /boot/firmware/cmdline.txt
-    exit 0
-    ```
-    The piped `Y` answers "yes" to enabling auto-start on boot; the `N` skips the interactive `nano config.json` prompt, since there's no terminal attached during first boot. `install.sh` also asks for a receive address afterwards, but with no terminal attached that prompt just reads EOF and gets treated as blank — same as pressing Enter to skip it — so no third answer is needed here; add `WALLET_ADDRESS` to `.env` by hand later if you want the QR code. The last two lines clean up after themselves so the script doesn't try to re-run on every subsequent boot.
-3. Open `cmdline.txt`, which already exists at the root of the boot partition (Imager writes it for every card). It's a single line with no trailing newline — carefully append the following to the *end* of that existing line, separated by a space, without adding a line break:
-    ```
-    systemd.run=/boot/firmware/firstrun.sh systemd.run_success_action=reboot systemd.unit=kernel-command-line.target
-    ```
-    The paths above use `/boot/firmware` (not `/boot`) because that's where the OS mounts this partition once it's running, even though it shows up as `bootfs`/`boot` when you view the card from your computer.
-4. Save both files, eject the card, and boot the Pi as normal.
-
-This is more fragile than it used to be since Imager no longer scaffolds it for you — a mistake editing `cmdline.txt` (e.g. an extra line break) can prevent the Pi from booting correctly, so double check it's still a single line before ejecting. If you'd rather not risk it, skip this section entirely: your SSH/user/WiFi settings already come from `custom.toml` via the Imager wizard, so you can just SSH in after first boot and run the `git clone`/`install.sh` steps manually (see [Install piDisplay](#Installing-piDisplay) below).
-
-First boot will take a few minutes longer than usual while it installs packages. Once it's up, SSH in and check `~/btc_piDisplay/first_boot_install.log` if the display doesn't appear — and don't forget you still need to create `.env` with your node's RPC details (see below), since that step was skipped automatically and there's no `.env` yet, only the committed `.env.example`.
-
 ## Install piDisplay
 
 Follow these steps to install and set up the project:
