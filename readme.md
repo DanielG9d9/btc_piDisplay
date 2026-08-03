@@ -50,8 +50,9 @@ My build consists of a raspberry pi 4 (8gb), 1 TB HHD, and a 5" display from [Am
 
 ## Pre-requisites
 1. You should have a bitcoin node operational on your local network.
-2. You should know the RPC login information (user/pwd).
-3. You should be able to connect to the target display via ssh (Termius or VS Code) or terminal with a keyboard connected to the node.
+2. Node needs to be reachable via RPC (server=1 in bitcoin.conf & rpcallowip=(lookup how to open your LAN IP's)).
+3. You should know the RPC login information (user/pwd).
+4. You should be able to connect to the target display via ssh (Termius or Visual Studio Code) or terminal with a keyboard connected directly to the node. This will be required to run the clone and install commands.
 
 Recommended node software:
 1. Parmanode - https://parmanode.com/install/ (Install it on RaspiPi OS not Linux)
