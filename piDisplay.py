@@ -1149,18 +1149,29 @@ def get_bitcoin_price():
         ticker = next(iter(ticker_data["result"].values()))
         current_price = float(ticker["c"][0])
 
-        # Previous 24h of price history, from 5-minute candles (Kraken's
-        # OHLC endpoint returns up to 720 candles regardless of interval, so
-        # this covers well over 24h and gets filtered below).
-        candles = _kraken_ohlc(5)
+        # 'daily' shows a month of history so the candlestick view has more
+        # than a single bucket to draw. Kraken's OHLC endpoint returns up to
+        # 720 candles regardless of interval, so hourly candles (60min * 720
+        # = 30 days) are the finest granularity that covers a full month.
+        # Every other interval keeps the previous 24h, from 5-minute candles
+        # (which also covers well over 24h and gets filtered below).
+        if color_scheme_interval == 'daily':
+            candles = _kraken_ohlc(60)
+            lookback_days = 30
+        else:
+            candles = _kraken_ohlc(5)
+            lookback_days = 1
         if candles is None:
             return current_price, None, None
 
-        cutoff_ms = (datetime.now().timestamp() - 24 * 3600) * 1000
+        cutoff_ms = (datetime.now().timestamp() - lookback_days * 24 * 3600) * 1000
         prices = [[c[0], c[4]] for c in candles if c[0] >= cutoff_ms]  # [timestamp_ms, close]
 
         if prices:
-            previous_close_price = prices[0][1]
+            # daily_change is always the actual 24h change, even when prices
+            # spans a full month for the daily view.
+            day_ago_ms = (datetime.now().timestamp() - 24 * 3600) * 1000
+            previous_close_price = next((p[1] for p in prices if p[0] >= day_ago_ms), prices[0][1])
             daily_change = (current_price - previous_close_price) / previous_close_price * 100
             daily_change = round(daily_change, 2)
             return current_price, daily_change, prices
@@ -1171,13 +1182,21 @@ def get_bitcoin_price():
         return None, None, None
 
 def get_bitcoin_ohlc():
-    """Fetch real 30-minute OHLC candles from Kraken (actual exchange-derived
-    open/high/low/close, not approximated from the plain price series)."""
+    """Fetch real OHLC candles from Kraken (actual exchange-derived
+    open/high/low/close, not approximated from the plain price series).
+    30-minute granularity over the last 24h normally; for the 'daily' view,
+    hourly granularity over the last 30 days so it can be bucketed into a
+    month of daily candles."""
     try:
-        candles = _kraken_ohlc(30)
+        if color_scheme_interval == 'daily':
+            candles = _kraken_ohlc(60)
+            lookback_days = 30
+        else:
+            candles = _kraken_ohlc(30)
+            lookback_days = 1
         if candles is None:
             return None
-        cutoff_ms = (datetime.now().timestamp() - 24 * 3600) * 1000
+        cutoff_ms = (datetime.now().timestamp() - lookback_days * 24 * 3600) * 1000
         return [c for c in candles if c[0] >= cutoff_ms]  # [[timestamp_ms, open, high, low, close], ...]
     except (requests.RequestException, ValueError, KeyError) as e:
         logging.error(f"Error fetching OHLC data: {e}")
@@ -1308,7 +1327,7 @@ def _real_ohlc_candles():
         return None
 
     candles = [(datetime.fromtimestamp(c[0] / 1000), c[1], c[2], c[3], c[4]) for c in raw]
-    if viewing_mode == "static":
+    if viewing_mode == "static" and color_scheme_interval != 'daily':
         est = pytz.timezone('US/Eastern')
         now_est = datetime.now(est)
         today_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0).replace(tzinfo=None)
@@ -1422,7 +1441,10 @@ def render_price_chart(current_price, daily_change, prices):
     dates = [datetime.fromtimestamp(price[0] / 1000) for price in prices]
     values = [price[1] for price in prices]
 
-    if viewing_mode == "static":
+    # 'static' viewing mode normally fixes the chart to just today's calendar
+    # day, but that makes no sense for the 'daily' interval's month-long
+    # view, so it keeps the full fetched range instead.
+    if viewing_mode == "static" and color_scheme_interval != 'daily':
         est = pytz.timezone('US/Eastern')
         now_est = datetime.now(est)
         today_midnight = now_est.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -1455,7 +1477,9 @@ def render_price_chart(current_price, daily_change, prices):
     ax.tick_params(axis='x', colors=PALETTE['muted'], labelsize=10 * scale)
     ax.tick_params(axis='y', colors=PALETTE['muted'], labelsize=10 * scale)
 
-    if time_series.lower() == "standard":
+    if color_scheme_interval == 'daily':
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %-d'))
+    elif time_series.lower() == "standard":
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%-I:%M %p'))
     else:
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
@@ -1478,7 +1502,7 @@ def render_price_chart(current_price, daily_change, prices):
             zorder=4
         )
 
-    if viewing_mode == "static":
+    if viewing_mode == "static" and color_scheme_interval != 'daily':
         ax.set_xlim(today_midnight_naive, today_end_naive)
         ax.margins(x=0.01, y=0.05)  # Small x-padding to prevent clipping
 

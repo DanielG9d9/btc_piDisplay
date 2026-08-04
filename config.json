@@ -17,7 +17,7 @@
     "chart_alternating_interval": "30s",
     "__chart_alternating_interval_options": "15s, 30s, 1m",
     "color_scheme_interval": "hourly",
-    "__color_scheme_interval_options": "daily, hourly, 30min, 15min, 5min (also sets candlestick width). 5min is the finest resolution the app fetches from Kraken.",
+    "__color_scheme_interval_options": "daily, hourly, 30min, 15min, 5min (also sets candlestick width). 5min is the finest resolution the app fetches from Kraken. 'daily' is the odd one out: it fetches and displays a month of history instead of the usual 24h, so the candlestick chart has more than one bucket to draw.",
     "__color_scheme_interval_mapping": {
         "daily": 1440,
         "hourly": 60,
