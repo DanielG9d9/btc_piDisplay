@@ -61,6 +61,16 @@ except ImportError as e:
     )
 
 IS_PI = platform.machine().startswith("arm") or platform.machine().startswith("aarch")
+
+# Extra size multiplier applied (in _display_scale) only on Pi panels wider
+# than the 5" official display's 800x480 (e.g. a 1024x600 7" panel). The
+# base _display_scale formula is bottlenecked by screen width alone (screen
+# aspect ratios never let the height term bind), which only landed a 7"
+# panel ~28% above the 5" one — nowhere near big enough to read comfortably
+# on the physically larger panel. Keyed off IS_PI, not just window size, so
+# desktop/--testing runs (any window size) are never affected, and the 5"
+# panel (800px wide, under the threshold in _display_scale) is untouched.
+PI_LARGE_PANEL_BOOST = 1.8
 # Parse command line args FIRST
 parser = argparse.ArgumentParser(description="Bitcoin Pi Display")
 parser.add_argument('--testing', action='store_true', help='Enable testing mode')
@@ -793,33 +803,39 @@ def update_more_metrics():
         return TextArea(text, textprops=dict(color=color or PALETTE['primary'], fontsize=13 * scale, fontweight='bold'))
 
     rows = [
-        HPacker(children=[label("Last Update:"), value(last_update)], align="left", pad=0, sep=6),
-        HPacker(children=[label("Network:"), value(f"{chain_name}net")], align="left", pad=0, sep=6),
-        HPacker(children=[label("Peers:"), value(str(total_connections))], align="left", pad=0, sep=6),
-        HPacker(children=[label("Latest Block:"), value(f"{latest_block:,}")], align="left", pad=0, sep=6),
-        HPacker(children=[label("Difficulty:"), value(difficulty_text)], align="left", pad=0, sep=6),
+        HPacker(children=[label("Last Update:"), value(last_update)], align="left", pad=0, sep=6 * scale),
+        HPacker(children=[label("Network:"), value(f"{chain_name}net")], align="left", pad=0, sep=6 * scale),
+        HPacker(children=[label("Peers:"), value(str(total_connections))], align="left", pad=0, sep=6 * scale),
+        HPacker(children=[label("Latest Block:"), value(f"{latest_block:,}")], align="left", pad=0, sep=6 * scale),
+        HPacker(children=[label("Difficulty:"), value(difficulty_text)], align="left", pad=0, sep=6 * scale),
         HPacker(children=[label("Fees (sat/vB):"),
-                           value(f"L:{fees[0]} M:{fees[1]} H:{fees[2]}" if fees else "N/A")], align="left", pad=0, sep=6),
+                           value(f"L:{fees[0]} M:{fees[1]} H:{fees[2]}" if fees else "N/A")], align="left", pad=0, sep=6 * scale),
         HPacker(children=[label("Fees (USD):"),
-                           value(f"L:${fee_rates_usd[0]:,.2f} M:${fee_rates_usd[1]:,.2f} H:${fee_rates_usd[2]:,.2f}" if fees else "N/A")], align="left", pad=0, sep=6),
-        HPacker(children=[label("24h High:"), value(f"${high_24h:,.0f}", PALETTE['good'])], align="left", pad=0, sep=6),
-        HPacker(children=[label("24h Low:"), value(f"${low_24h:,.0f}", PALETTE['critical'])], align="left", pad=0, sep=6),
+                           value(f"L:${fee_rates_usd[0]:,.2f} M:${fee_rates_usd[1]:,.2f} H:${fee_rates_usd[2]:,.2f}" if fees else "N/A")], align="left", pad=0, sep=6 * scale),
+        HPacker(children=[label("24h High:"), value(f"${high_24h:,.0f}", PALETTE['good'])], align="left", pad=0, sep=6 * scale),
+        HPacker(children=[label("24h Low:"), value(f"${low_24h:,.0f}", PALETTE['critical'])], align="left", pad=0, sep=6 * scale),
     ]
     if address_balance is not None:
         rows.append(HPacker(children=[label("Address Balance:"),
                                        value(f"{address_balance:.3f} BTC (${usd_value:,.0f})", PALETTE['accent'])],
-                             align="left", pad=0, sep=6))
-    box = VPacker(children=rows, align="left", pad=0, sep=8)
+                             align="left", pad=0, sep=6 * scale))
+    box = VPacker(children=rows, align="left", pad=0, sep=8 * scale)
     heading = TextArea("NODE METRICS", textprops=dict(color=PALETTE['primary'], fontsize=18 * scale, fontweight='bold'))
 
     for child in more_ax.get_children():
         if isinstance(child, AnchoredOffsetbox):
             child.remove()
 
+    # prop sets the fontsize AnchoredOffsetbox uses as its own reference for
+    # pad/borderpad (both are "fraction of fontsize"), so the padding grows
+    # with `scale` too instead of staying pinned to the rcParams default and
+    # looking cramped once the surrounding text is scaled way up on a big panel.
     anchored_heading = AnchoredOffsetbox(loc='upper left', child=heading, pad=0.6, frameon=False,
-                                          bbox_to_anchor=(0.02, 0.98), bbox_transform=more_ax.transAxes, borderpad=0)
+                                          bbox_to_anchor=(0.02, 0.98), bbox_transform=more_ax.transAxes, borderpad=0,
+                                          prop=dict(size=18 * scale))
     anchored_box = AnchoredOffsetbox(loc='upper left', child=box, pad=0.8, frameon=True,
-                                      bbox_to_anchor=(0.02, 0.86), bbox_transform=more_ax.transAxes, borderpad=0)
+                                      bbox_to_anchor=(0.02, 0.86), bbox_transform=more_ax.transAxes, borderpad=0,
+                                      prop=dict(size=13 * scale))
     anchored_box.patch.set_boxstyle("round,pad=0.6")
     anchored_box.patch.set_facecolor(PALETTE['page'])
     anchored_box.patch.set_edgecolor(PALETTE['baseline'])
@@ -842,9 +858,10 @@ def update_more_metrics():
         qr_children = [qr_label, qr_image]
         if qr_address == DEFAULT_WALLET_ADDRESS:
             qr_children.append(TextArea("Buy me a coffee ☕", textprops=dict(color=PALETTE['bitcoin_orange'], fontsize=11 * scale, fontweight='bold')))
-        qr_content = VPacker(children=qr_children, align="center", pad=0, sep=4)
+        qr_content = VPacker(children=qr_children, align="center", pad=0, sep=4 * scale)
         anchored_qr = AnchoredOffsetbox(loc='upper right', child=qr_content, pad=0.8, frameon=True,
-                                         bbox_to_anchor=(0.98, 0.98), bbox_transform=more_ax.transAxes, borderpad=0)
+                                         bbox_to_anchor=(0.98, 0.98), bbox_transform=more_ax.transAxes, borderpad=0,
+                                         prop=dict(size=12 * scale))
         anchored_qr.patch.set_boxstyle("round,pad=0.6")
         anchored_qr.patch.set_facecolor(PALETTE['page'])
         anchored_qr.patch.set_edgecolor(PALETTE['baseline'])
@@ -1412,11 +1429,20 @@ def _display_scale(fig):
     panel (e.g. a 7" screen at 1024x600 vs. a 5" screen at 800x480) even
     though both are rendered fullscreen. Clamped so a tiny screen doesn't
     shrink text to unreadable, and a larger-than-baseline window doesn't
-    balloon it."""
+    balloon it.
+
+    On top of that base ratio, Pi panels wider than the 800px-wide 5"
+    baseline get PI_LARGE_PANEL_BOOST applied as well — see its definition
+    for why the base ratio alone isn't enough. This never fires for the 5"
+    panel itself (800px is not > 850px) or for desktop/--testing windows
+    (IS_PI is False there), so neither is affected."""
     base_w, base_h = 10.0, 4.0
     fig_w, fig_h = fig.get_size_inches()
     scale = min(fig_w / base_w, fig_h / base_h)
-    return max(0.55, min(scale, 1.15))
+    scale = max(0.55, min(scale, 1.15))
+    if IS_PI and fig_w * 100 > 850:  # wider than the 5" baseline's 800px (fig inches are screen px / 100 dpi)
+        scale *= PI_LARGE_PANEL_BOOST
+    return scale
 
 def _draw_stat_tile(fig, grid_cell, label, big_text, unit_text, sub_text, value_color=None, scale=1.0):
     """Draw one stat card (label / big value [+ small unit] / subtext)
@@ -1833,18 +1859,22 @@ def update_node_table(blockchain_data, network_data, fees):
         # TODO: Add connections in and out!
         
         # Arrange text areas horizontally and vertically
-        row1 = HPacker(children=[deviceName, chainName], align="left", pad=0, sep=5)
-        row2 = HPacker(children=[blocksName, blocksNumber, syncStatus, verificationProgress], align="left", pad=0, sep=5)
-        row3 = HPacker(children=[feeText, feeNumbers], align="left", pad=0, sep=5)
-        row4 = HPacker(children=[difficultyName, difficultyNumber, cpuTempName, cpuTempNumber], align="left", pad=0, sep=5)
-        box = VPacker(children=[row1, row2, row3, row4], align="left", pad=0, sep=5)
+        row1 = HPacker(children=[deviceName, chainName], align="left", pad=0, sep=5 * scale)
+        row2 = HPacker(children=[blocksName, blocksNumber, syncStatus, verificationProgress], align="left", pad=0, sep=5 * scale)
+        row3 = HPacker(children=[feeText, feeNumbers], align="left", pad=0, sep=5 * scale)
+        row4 = HPacker(children=[difficultyName, difficultyNumber, cpuTempName, cpuTempNumber], align="left", pad=0, sep=5 * scale)
+        box = VPacker(children=[row1, row2, row3, row4], align="left", pad=0, sep=5 * scale)
 
         # Lower left of the chart
         fig.subplots_adjust(bottom=0.12)  # Increase bottom margin # Adjust the plot layout to make room for the box
+        # prop scales pad/borderpad (both "fraction of fontsize") with `fs`,
+        # so the box padding keeps pace with the text instead of staying
+        # pinned to the rcParams default and looking cramped at large scale.
         anchored_box = AnchoredOffsetbox(loc=3, child=box, pad=0.5, frameon=True, # Create the anchored box
                                             bbox_to_anchor=(0.01, 0.02),
                                             bbox_transform=ax.transAxes,
-                                            borderpad=0) 
+                                            borderpad=0,
+                                            prop=dict(size=fs))
         
         anchored_box.patch.set_boxstyle("round,pad=0.5")
         anchored_box.patch.set_facecolor('black')
