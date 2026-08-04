@@ -347,11 +347,17 @@ def create_display():
     root = tk.Tk()
     root.title("Bitcoin Node Information")
 
+    # Same 850px threshold _display_scale() uses to tell the 7" Pi panel
+    # (1024x600) apart from the 5" one (800x480) — the toolbar buttons are
+    # plain Tk widgets, not matplotlib, so they need their own bump here.
+    is_large_pi_panel = False
+
     if IS_PI:
         # Fullscreen for Pi display
         root.overrideredirect(True)
         screen_w = root.winfo_screenwidth()
         screen_h = root.winfo_screenheight()
+        is_large_pi_panel = screen_w > 850
         root.geometry(f"{screen_w}x{screen_h}+0+0")
         root.config(cursor="none")
         
@@ -397,12 +403,15 @@ def create_display():
     button_style = dict(
         bg=PALETTE['page'], bd=0, highlightthickness=0,
         activebackground=PALETTE['surface'],
-        font=('Segoe UI', 10), padx=10, pady=4,
+        font=('Segoe UI', 15 if is_large_pi_panel else 10),
+        padx=15 if is_large_pi_panel else 10,
+        pady=7 if is_large_pi_panel else 4,
     )
 
     countdown_label = tk.Label(
         toolbar_frame, text=initial_text, bg=PALETTE['page'], fg=PALETTE['secondary'],
-        font=('Consolas', 11), padx=10, pady=4
+        font=('Consolas', 16 if is_large_pi_panel else 11),
+        padx=10, pady=4
     )
     countdown_label.pack(side=tk.LEFT)
 
