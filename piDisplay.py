@@ -403,14 +403,14 @@ def create_display():
     button_style = dict(
         bg=PALETTE['page'], bd=0, highlightthickness=0,
         activebackground=PALETTE['surface'],
-        font=('Segoe UI', 15 if is_large_pi_panel else 10),
-        padx=15 if is_large_pi_panel else 10,
-        pady=7 if is_large_pi_panel else 4,
+        font=('Segoe UI', 20 if is_large_pi_panel else 10),
+        padx=20 if is_large_pi_panel else 10,
+        pady=8 if is_large_pi_panel else 4,
     )
 
     countdown_label = tk.Label(
         toolbar_frame, text=initial_text, bg=PALETTE['page'], fg=PALETTE['secondary'],
-        font=('Consolas', 16 if is_large_pi_panel else 11),
+        font=('Consolas', 22 if is_large_pi_panel else 11),
         padx=10, pady=4
     )
     countdown_label.pack(side=tk.LEFT)
