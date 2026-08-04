@@ -750,11 +750,31 @@ def update_more_metrics():
     if current_screen != "more" or more_ax is None:
         return
 
+    # Settled first, before touching axes/layout at all: the canvas widget's
+    # on-screen pixel size isn't final the instant it's packed (Tk delivers
+    # that via a <Configure> event on its own schedule), and until it fires,
+    # the figure is still sized to its nominal construction-time figsize, not
+    # its real on-screen size. FigureCanvasTkAgg's <Configure> handler both
+    # resizes the figure AND schedules an immediate redraw (draw_idle), so
+    # calling update_idletasks() any later — e.g. once, right before reading
+    # the Mining/Price button's position below — would flush that resize AND
+    # its redraw mid-function, painting whatever partially-positioned state
+    # existed at that point (this was the cause of the QR briefly appearing
+    # in the wrong spot on load). Doing it now, before any content exists,
+    # means that implicit redraw (if it fires) paints the blank axes instead.
+    root.update_idletasks()
+    canvas_left_px = more_canvas.get_tk_widget().winfo_rootx()
+    button_center_px = mining_button.winfo_rootx() + mining_button.winfo_width() / 2
+    qr_button_offset_px = button_center_px - canvas_left_px
+
     more_ax.clear()
     more_ax.set_facecolor(PALETTE['surface'])
     more_fig.patch.set_facecolor(PALETTE['page'])
     more_ax.axis('off')
-    scale = _display_scale(more_fig)
+    # tight_layout() shrinks the axis('off') subplot's margins substantially
+    # (it starts with the default rcParams margins despite having no visible
+    # ticks/labels), so anything measured beforehand is off by that shrink.
+    more_fig.tight_layout()
 
     # Fetch data
     if testing:
@@ -862,18 +882,61 @@ def update_more_metrics():
         qr_image = OffsetImage(qr_array, zoom=qr_zoom)
         qr_children = [qr_label, qr_image]
         if qr_address == DEFAULT_WALLET_ADDRESS:
-            qr_children.append(TextArea("Buy me a coffee ☕", textprops=dict(color=PALETTE['bitcoin_orange'], fontsize=11 * scale, fontweight='bold')))
-        qr_content = VPacker(children=qr_children, align="center", pad=0, sep=4 * scale)
+            qr_children.append(TextArea("Buy me a coffee ☕", textprops=dict(color=PALETTE['bitcoin_orange'], fontsize=11, fontweight='bold')))
+        qr_content = VPacker(children=qr_children, align="center", pad=0, sep=4)
+
+        # Placed flush right first, purely so its rendered width can be
+        # measured below — repositioned afterward to center it in the space
+        # actually left over next to the metrics box (which varies in width
+        # with its content), without letting it overlap that box.
         anchored_qr = AnchoredOffsetbox(loc='upper right', child=qr_content, pad=0.8, frameon=True,
-                                         bbox_to_anchor=(0.98, 0.98), bbox_transform=more_ax.transAxes, borderpad=0,
-                                         prop=dict(size=12 * scale))
+                                         bbox_to_anchor=(0.98, 0.86), bbox_transform=more_ax.transAxes, borderpad=0)
         anchored_qr.patch.set_boxstyle("round,pad=0.6")
         anchored_qr.patch.set_facecolor(PALETTE['page'])
         anchored_qr.patch.set_edgecolor(PALETTE['baseline'])
         anchored_qr.patch.set_alpha(0.9)
         more_ax.add_artist(anchored_qr)
 
-    more_fig.tight_layout()
+        # Measured via get_renderer() alone, not draw() — draw() actually
+        # paints to the screen on this Tk backend, and calling it here (at
+        # the QR's placeholder position, before it's repositioned below)
+        # was flashing that wrong position for a frame before the corrected
+        # one landed. get_renderer() lazily builds an Agg renderer from just
+        # the figure's size/dpi, which is all get_window_extent() needs.
+        renderer = more_fig.canvas.get_renderer()
+        to_frac_x = lambda px: more_ax.transAxes.inverted().transform((px, 0))[0]
+        to_frac_y = lambda py: more_ax.transAxes.inverted().transform((0, py))[1]
+        box_bbox = anchored_box.get_window_extent(renderer)
+        box_right_frac = to_frac_x(box_bbox.x1)
+        box_top_frac = to_frac_y(box_bbox.y1)
+        box_center_y_frac = to_frac_y((box_bbox.y0 + box_bbox.y1) / 2)
+        qr_bbox = anchored_qr.get_window_extent(renderer)
+        qr_width_frac = to_frac_x(qr_bbox.x1) - to_frac_x(qr_bbox.x0)
+        qr_height_frac = to_frac_y(qr_bbox.y1) - to_frac_y(qr_bbox.y0)
+
+        # Horizontally aligned with the Mining/Price toggle button in the
+        # toolbar above (captured up front, before any content existed —
+        # see the comment near the top of this function) — the "leftover
+        # space next to the metrics box" doesn't have a clean axes-fraction
+        # definition (the toolbar lives in a separate Tk widget overlaid on
+        # top of this figure, not inside more_ax), so anchoring to a fixed
+        # screen landmark reads better than centering in a gap that
+        # undershoots what looks like free space.
+        qr_center_x = to_frac_x(qr_button_offset_px)
+
+        margin = 0.02
+        gap_left = box_right_frac + margin
+        gap_right = 1.0 - margin
+        # Keep it clear of the metrics box and the screen edge even if the
+        # button ends up somewhere that would otherwise push it into either —
+        # box takes priority over the edge if the QR is too wide for both.
+        qr_left = max(min(qr_center_x - qr_width_frac / 2, gap_right - qr_width_frac), gap_left)
+        # Vertically centered on the metrics box itself, not the top of it —
+        # clamped so a QR taller than the box (e.g. an error state with fewer
+        # rows) still can't push above the box's own top into the heading.
+        qr_top = min(box_center_y_frac + qr_height_frac / 2, box_top_frac)
+        anchored_qr.set_bbox_to_anchor((qr_left + qr_width_frac, qr_top), transform=more_ax.transAxes)
+
     more_canvas.draw()
 
 def proper_exit():
