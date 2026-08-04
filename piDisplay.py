@@ -355,13 +355,20 @@ def create_display():
         root.geometry(f"{screen_w}x{screen_h}+0+0")
         root.config(cursor="none")
         
-        # Figure matches screen exactly
+        # Figure matches screen exactly, so _display_scale() sees the right
+        # scale from the very first render. Tk's <Configure>-triggered resize
+        # (built into matplotlib's TkAgg backend) will keep this in sync as
+        # the window is laid out, but that event only fires once the event
+        # loop starts processing events — too late for the first draw. A
+        # stale/incorrect figsize here previously showed up as everything
+        # rendering oversized on the 5" panel until the first screen switch
+        # forced a redraw after Tk had caught up.
         fig_w = screen_w / 100  # DPI-adjusted
         fig_h = screen_h / 100
         fig = plt.Figure(figsize=(fig_w, fig_h), dpi=100)
     else:
         root.geometry("1280x720")
-        fig = plt.Figure(figsize=(12, 5))   
+        fig = plt.Figure(figsize=(10, 4), dpi=100)
 
     root.focus_set()
     root.grid_columnconfigure(0, weight=1)
@@ -433,12 +440,6 @@ def create_display():
     style = ttk.Style()
     style.theme_use('clam')
 
-    if IS_PI:
-        screen_width = root.winfo_screenwidth() / root.winfo_screenheight() * 10
-        screen_height = 4.0  # Fixed height ratio
-        fig = plt.Figure(figsize=(screen_width, screen_height))
-    else:
-        fig = plt.Figure(figsize=(10, 4))
     canvas = FigureCanvasTkAgg(fig, master=chart_frame)
     canvas.draw()
     canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
@@ -476,13 +477,17 @@ def show_more_screen():
     current_screen = "more"
     canvas.get_tk_widget().pack_forget()  # Hide main chart
     
-    # Create more chart directly in chart_frame, matching the main chart's aspect ratio
+    # Create more chart directly in chart_frame, matching the main chart's
+    # aspect ratio. Sized from the real screen pixels (not a fixed height
+    # ratio) for the same reason as create_display()'s fig — so
+    # _display_scale() is correct on the very first render of this screen,
+    # before Tk's resize-on-<Configure> would otherwise catch it up.
     if IS_PI:
-        screen_width = root.winfo_screenwidth() / root.winfo_screenheight() * 10
-        screen_height = 4.0
-        more_fig = plt.Figure(figsize=(screen_width, screen_height))
+        screen_w = root.winfo_screenwidth()
+        screen_h = root.winfo_screenheight()
+        more_fig = plt.Figure(figsize=(screen_w / 100, screen_h / 100), dpi=100)
     else:
-        more_fig = plt.Figure(figsize=(10, 4))
+        more_fig = plt.Figure(figsize=(10, 4), dpi=100)
     more_ax = more_fig.add_subplot(111)
     more_fig.patch.set_facecolor(PALETTE['page'])
     more_ax.set_facecolor(PALETTE['surface'])
