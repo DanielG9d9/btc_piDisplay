@@ -59,7 +59,16 @@ Recommended node software:
 
 Recommended node hardware:
 1. Raspberry Pi 3+ - I used a 4B in my development but resource wise this shouldn't be too demanding.
-2. Hosyond 5 Inch Touchscreen - https://www.amazon.com/dp/B0CXTFN8K9?ref_=ppx_hzsearch_conn_dt_b_fed_asin_title_4
+2. [Power supply for Pi](https://www.amazon.com/Raspberry-Pi-USB-C-Power-Supply/dp/B07W8XHMJZ/ref=sr_1_8?s=electronics&sr=1-8). The Raspberry Pi powers the LCD so you only need something for the pi.
+3. Not required, but could use a [fan](https://www.amazon.com/GeeekPi-Raspberry-Aluminum-Heatsink-Controllable/dp/B091L1XKL6/ref=sr_1_1_sspa?sr=8-1-spons&sp_csd=d2lkZ2V0TmFtZT1zcF9hdGY&psc=1) to ensure it stays cool. 
+
+5" Build:
+* [Hosyond 5 Inch Touchscreen](https://www.amazon.com/dp/B0CXTFN8K9?ref_=ppx_hzsearch_conn_dt_b_fed_asin_title_4)
+
+7" Build:
+* [Hosyond 7 Inch IPS LCD Touch Screen Display Panel 1024×600](https://www.amazon.com/dp/B09XKC53NH)
+* [HDMI Cable](https://www.amazon.com/dp/B09L4Q2DXR/ref=twister_B0969MRFRR?_encoding=UTF8)
+* WIP - Pi Case STL Files to be attached to repo: TODO
 
 ## Ready pi
 Follow these steps if you're trying to run a new Pi Display. You can copy / paste directly into the terminal.
